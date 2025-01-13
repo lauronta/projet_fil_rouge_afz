@@ -43,8 +43,8 @@ desc_DB = create_database(table_fourrages, combinasons_pertinentes)
 
 def write_file(table, column, path, sep='\n'):
     with open(path, 'w') as f:
-        for desc in desc_DB[column]:
-            f.write(desc + sep)
+        for to_write in table[column]:
+            f.write(to_write + sep)
 
 write_file(desc_DB, "Descriptions", WD + '/Descriptions_TableINRA2018.txt')
 
