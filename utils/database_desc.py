@@ -41,9 +41,12 @@ desc_DB = create_database(table_fourrages, combinasons_pertinentes)
 
 # desc_DB.to_excel(WD + "/TableINRA2018_AvecDescriptions.xlsx")
 
-with open(WD + '/Descriptions_TableINRA2018.txt', 'w') as f:
-    for desc in desc_DB["Descriptions"]:
-        f.write(desc + '\n')
+def write_file(table, column, path, sep='\n'):
+    with open(path, 'w') as f:
+        for desc in desc_DB[column]:
+            f.write(desc + sep)
+
+write_file(desc_DB, "Descriptions", WD + '/Descriptions_TableINRA2018.txt')
 
 # Goal : To Generate the database for Feedipedia
 
