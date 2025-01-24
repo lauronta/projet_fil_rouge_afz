@@ -115,21 +115,6 @@ class FNVModel(nn.Module):
           parameters.to(DEVICE)
 
         EMB_SIZE = 768
-
-        self.refine_text_emb_1 = nn.Sequential(nn.Linear(EMB_SIZE, 2048),
-                                                nn.ReLU(),
-                                                nn.LayerNorm(2048))
-        self.refine_text_emb_2 = nn.Sequential(nn.Linear(2048, EMB_SIZE),
-                                                nn.ReLU(),
-                                                nn.Dropout(0.1),
-                                                nn.LayerNorm(EMB_SIZE))
-        self.refine_text_emb_3 = nn.Sequential(nn.Linear(EMB_SIZE, 2048),
-                                                nn.ReLU(),
-                                                nn.Dropout(0.1),
-                                                nn.LayerNorm(2048))
-        self.refine_text_emb_4 = nn.Sequential(nn.Linear(2048, EMB_SIZE),
-                                                nn.ReLU(),
-                                                nn.LayerNorm(EMB_SIZE))
         
         self.repr_enricher = nn.Sequential(nn.Linear(6 + EMB_SIZE, 2048),
                                     #    nn.LayerNorm(2048),
@@ -151,6 +136,7 @@ class FNVModel(nn.Module):
                                        nn.Linear(256, 256),
                                        nn.ReLU(),
                                        nn.Linear(256, 3))
+        
         self.en_regressor = nn.Sequential(nn.Linear(512 + 6, 512),
                                     #    nn.LayerNorm(2048),
                                        nn.ReLU(),
@@ -161,12 +147,7 @@ class FNVModel(nn.Module):
                                        nn.Linear(256, 256),
                                        nn.ReLU(),
                                        nn.Linear(256, 2))
-        for block in [
-                      #self.refine_text_emb_1, 
-                      #self.refine_text_emb_2, 
-                      #self.refine_text_emb_3, 
-                      #self.refine_text_emb_4,
-                      self.repr_enricher, 
+        for block in [self.repr_enricher, 
                       self.prot_regressor,
                       self.en_regressor]:
             for layer in block:
@@ -196,17 +177,11 @@ class FNVModel(nn.Module):
                                         n_to_fill, 
                                         cls_id=cls_id).to(DEVICE)
 
-        # refine textual features
-        #refined_1 = self.refine_text_emb_1(text_features)
-        #refined_2 = self.refine_text_emb_2(refined_1)
-        #refined_3 = self.refine_text_emb_3(refined_2 + text_features) # residual connection
-        #refined_4 = self.refine_text_emb_4(refined_3 + refined_1) # residual connection
-
         # enrich representations
         regression_emb = self.repr_enricher(torch.cat((text_features, x), dim=1))
-        prot_output = self.prot_regressor(torch.cat((regression_emb, x), dim=1)) # residual connection
+        prot_output = self.prot_regressor(torch.cat((regression_emb, x), dim=1)) # skip connection
         en_output = self.en_regressor(torch.cat((regression_emb, x), dim=1))
-        # print(output)
+        
         return torch.cat((en_output, prot_output), dim=1)
 
     def train_log(self, train_batch_losses, val_batch_losses, train_loss, validation_loss):
@@ -408,11 +383,13 @@ if __name__ == "__main__":
     module.save_model(save_path)
 
     module = load_model(save_path, DEVICE)
+    module.eval()
+
     predictions, true_targets = evaluate(module, 
                                          test_iterator, 
                                          nn.SmoothL1Loss(reduction='mean'))
     show_predictions(predictions, 
                       true_targets, 
                       TARGETS, 
-                      target_normalizer=TARGET_NORM, 
+                      target_normalizer=None, #TARGET_NORM, 
                       save_path=COLAB + "camemberta_model_test.pdf")

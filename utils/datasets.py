@@ -219,7 +219,42 @@ class NotreModele(nn.Module):
     def test_log(self, test_batch_losses, test_loss):
         self.history["test"].append({"test_batch_losses":test_batch_losses,
                                 "test_loss":test_loss})
-    
+
+
+def save_model_func(model, save_path, tag=""):
+        """
+        Saves the model architecture and state using state-of-the-art PyTorch methods.
+
+        Parameters:
+            path (str): The path to save the model file.
+        """
+        # Save model state dictionary and any additional information like architecture, optimizer, or history
+        torch.save({'model_state_dict': model.state_dict()}, 
+                   tag + "_" + save_path)
+        print(f"Model saved successfully at: {tag + '_' + save_path}")
+
+def load_model(model, save_path, device, tag=""):
+        """
+        Loads the saved model and returns it for inference.
+
+        Parameters:
+            path (str): Path to the saved model file.
+            device (torch.device): The device to map the model to (e.g., 'cuda' or 'cpu').
+            
+        Returns:
+            model: Loaded FNVModel instance ready for inference.
+        """
+        # Load checkpoint
+        checkpoint = torch.load(tag + "_" + save_path, map_location=device)
+        
+
+        # Load state dictionary
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.to(device)
+        
+        print("Model loaded successfully.")
+        return model
+
 def train_step(module, 
                 batch, 
                 batch_idx, 
@@ -261,9 +296,6 @@ def eval_step(module, batch, batch_idx, criterion, optimizer=None, training=True
         else:
             print(f"\n\033[1;32mTest Batch loss {batch_idx+1} : {loss.item()}")
             return module, loss, model_outputs, y
-
-    
-
 
 def train_loop(module, 
               EPOCHS, 
