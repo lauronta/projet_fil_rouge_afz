@@ -11,6 +11,7 @@ class SplitTransformer(BaseEstimator, TransformerMixin):
 
     def fit(self, X, y=None):
         self._number_splits = X.apply(lambda x : x.str.count(',').max(),axis=0).astype(int)
+        self.columns_ = X.columns
         return self
 
     def transform(self, X, y=None):
@@ -20,7 +21,8 @@ class SplitTransformer(BaseEstimator, TransformerMixin):
             new_col = [col+"-"+str(i) if i!=0 else col for i in range(j+1)]
             return_df[new_col] = splitted
         return return_df
-
+    def get_feature_names_out(self, *args, **params):
+        pass
 
 
 def split_columns(df : pd.DataFrame, cols : list) -> pd.DataFrame:
