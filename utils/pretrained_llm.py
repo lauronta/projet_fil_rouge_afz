@@ -33,10 +33,10 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForMaskedLM, pipelin
 # Custom Module imports
 from datasets import *
 
-
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = DEVICE
 
+# Load the model
 checkpoint = "almanach/camembertav2-base"
 
 CamemBERTa = AutoModel.from_pretrained(checkpoint).to(DEVICE)
@@ -44,6 +44,7 @@ tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 cls_id = tokenizer("[CLS]")['input_ids'][1]
 print("\nCLS token:", cls_id)
 
+# Load the corpus
 with open(COLAB + "Descriptions_FEEDIPEDIA_ENG.txt", 'r') as f:
     FEEDIPEDIA_ENG = f.readlines()
 
@@ -53,12 +54,15 @@ with open(COLAB + "Descriptions_FEEDIPEDIA_FR.txt", 'r') as f:
 with open(COLAB + "Descriptions_TableINRA2018.txt", 'r') as f:
     INRA2018 = f.readlines()
 
+# Small function to remove trailing "\n"
 def remove_trailing_n_char(string, n=2):
     return string[:-(n-1)]
 
+# Function to apply the above function to any iterable.
 def apply(func, iterable):
     return list(map(func, iterable))
 
+# Clean our texts
 INRA2018 = apply(remove_trailing_n_char, INRA2018)
 FEEDIPEDIA_FR = apply(remove_trailing_n_char, FEEDIPEDIA_FR)
 FEEDIPEDIA_ENG = apply(remove_trailing_n_char, FEEDIPEDIA_ENG)
@@ -66,10 +70,7 @@ FEEDIPEDIA_ENG = apply(remove_trailing_n_char, FEEDIPEDIA_ENG)
 ALL_TEXT = INRA2018 + FEEDIPEDIA_FR + FEEDIPEDIA_ENG
 FR_TEXT = INRA2018 + FEEDIPEDIA_FR
 
-# idx = int(torch.randint(len(FR_TEXT), size=(1,1))[0])
-# INPUT = FR_TEXT[idx:idx+10]
-# TK_INPUT = tokenizer(INPUT)
-
+# Function to make the texts/tokenizer interface properly
 def rdy_input(text, tokenizer):
     """
     Function to add padding for consistent size
@@ -84,26 +85,15 @@ def rdy_input(text, tokenizer):
     tk_input_emb_ids = [desc[:-1] + [pad_id]*n_to_fill[i] + [desc[-1]] for i, desc in enumerate(tk_input_emb_ids)]
     return tk_input_emb_ids, tk_input_mask, n_to_fill
 
+# Function output the last real embedding instead 
 def rdy_output(output, n_to_fill):
     # car output de taille Batch x MaxLen x EmbSize
     output = output.last_hidden_state
     maxlen = output.size()[1]
     return torch.stack([output[i, maxlen - n_missing - 1] for i, n_missing in enumerate(n_to_fill)])
 
-# print("\nInput Text:", INPUT)
-
-# TK_INPUT_EMB, TK_INPUT_MASK, N_TO_FILL = rdy_input(INPUT, tokenizer)
-
-# print("\nTokenized input:", TK_INPUT_EMB)
-
-# outputs = CamemBERTa(torch.tensor(TK_INPUT_EMB, device=device)) #torch.tensor(feature_extractor(INPUT, return_tensors="pt"), device=device)
-
-# outputs = rdy_output(outputs, N_TO_FILL)
-# print("\nFeatures :", outputs.size())
-
 
 # Fodder Nutritional Value Model (ou Model de Valeurs Nutritionnelles de Fourrages)
-# os.environ["TOKENIZERS_PARALLELISM"] = "false"
 class FNVModel(nn.Module):
     def __init__(self):
         super(FNVModel, self).__init__()
@@ -213,10 +203,10 @@ TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
 IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
 DB = pd.read_excel(COLAB + "TableINRA2018_AvecDescriptions.xlsx", header=0)
 
-# Pour une évaluation robuste, on sépare train/val/test 
-# en fonction des n_uplets des valeurs infrarouges de chaque fourrage
+# For robust evaluation, we split train/val/test sets
+# based on tuples of input numerical values
 
-# Liste des n-uplets uniques de valeurs infrarouge d'entrée
+# List of unique tuples of input numerical values
 print("\nGetting all unique IR value combinations...")
 DB['ir_tuple'] = list(map(tuple, DB[IN_FEATURES].values))
 unique_ir_values = DB['ir_tuple'].unique()
@@ -239,11 +229,15 @@ test_idx = DB.index[DB['ir_tuple'].isin(test_ir_values)].tolist()
 # Drop the temporary column if unnecessary
 DB.drop(columns=['ir_tuple'], inplace=True)
 
+# We verify that there are no shared indices between our train and our val/test sets
 assert set(test_idx).intersection(set(train_idx)) == set(), "There are shared indices."
 assert set(val_idx).intersection(set(train_idx)) == set(), "There are shared indices."
 
 print("\nAll indices are ready.")
 
+# For better training, it is important to normalize
+# We make sure there is no data leakage through normalization 
+# by fitting the normalizer on the training set not modifying it afterwards
 INPUT_NORM = MinMaxScaler(feature_range=(-1,1))
 INPUT_NORM.fit(DB[IN_FEATURES].iloc[train_idx])
 
@@ -252,26 +246,26 @@ TARGET_NORM.fit(DB[TARGETS].iloc[train_idx])
 targets_max = TARGET_NORM.data_max_
 targets_min = TARGET_NORM.data_min_
 
-# print("Training indices Size:", len(train_idx))
+# Creation of train/val/test Datasets
 training_data = FourragesDataset(db=DB, 
                                 dataset_idx=train_idx,
                                 device=DEVICE,
                                 tokenizer=tokenizer,
                                 mode="with_desc")
 
-# print("Validation indices Size:", len(val_idx))
 val_data = FourragesDataset(db=DB, 
                                 dataset_idx=val_idx,
                                 device=DEVICE,
                                 tokenizer=tokenizer,
                                 mode="with_desc")
 
-# print("Test indices Size:", len(test_idx))
 test_data = FourragesDataset(db=DB, 
                                 dataset_idx=test_idx,
                                 device=DEVICE,
                                 tokenizer=tokenizer,
                                 mode="with_desc")
+
+# Creation of Dataloaders
 BATCH = 64
 train_iterator = DataLoader(training_data, 
                             batch_size=BATCH, 
@@ -279,21 +273,17 @@ train_iterator = DataLoader(training_data,
                             # num_workers=0,
                             collate_fn=collate_fn)
 
-# print("Training Iterator Size:", len(train_iterator))
 val_iterator = DataLoader(val_data, 
                             batch_size=BATCH, 
                             shuffle=True, 
                             # num_workers=0,
                             collate_fn=collate_fn)
 
-# print("Validation Iterator Size:", len(train_iterator))
 test_iterator = DataLoader(test_data,
                             batch_size=BATCH, 
                             shuffle=True, 
                             # num_workers=0,
                             collate_fn=collate_fn)
-
-# torch.set_num_threads(6)
 
 def load_model(path, device):
     """
