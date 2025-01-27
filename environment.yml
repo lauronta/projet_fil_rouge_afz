@@ -1,0 +1,15 @@
+name: pfr_fourrage
+channels:
+  - defaults
+dependencies:
+  - python==3.12.*
+  - pip=24.2
+  - ipykernel
+  - pip:
+    - tokenizers==0.21
+    - transformers==4.48
+    - pandas==2.2.3
+    - scikit-learn==1.6.1
+    - torch==2.5.1
+
+
