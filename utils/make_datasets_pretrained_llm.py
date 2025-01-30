@@ -40,19 +40,22 @@ device = DEVICE
 # Load the model
 checkpoint = "almanach/camembertav2-base"
 
-CamemBERTa = AutoModel.from_pretrained(checkpoint, use_fast=True).to(DEVICE)
+CamemBERTa = AutoModel.from_pretrained(checkpoint).to(DEVICE)
 tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=True)
 cls_id = tokenizer("[CLS]")['input_ids'][1]
 print("\nCLS token:", cls_id)
 
 # Load the corpus
-with open(COLAB + "Descriptions_FEEDIPEDIA_ENG.txt", 'r') as f:
+PATH_TO_CORPUS = '/mnt/c/Users/rapha/OneDrive/Bureau/IODAA/Projet_Fourrage/projet_fil_rouge_afz/data/text/'
+PATH_TO_DB = '/mnt/c/Users/rapha/OneDrive/Bureau/IODAA/Projet_Fourrage/TableINRA2018_AvecDescriptions.xlsx'
+
+with open(PATH_TO_CORPUS + "Descriptions_FEEDIPEDIA_ENG.txt", 'r') as f:
     FEEDIPEDIA_ENG = f.readlines()
 
-with open(COLAB + "Descriptions_FEEDIPEDIA_FR.txt", 'r') as f:
+with open(PATH_TO_CORPUS + "Descriptions_FEEDIPEDIA_FR.txt", 'r') as f:
     FEEDIPEDIA_FR = f.readlines()
 
-with open(COLAB + "Descriptions_TableINRA2018.txt", 'r') as f:
+with open(PATH_TO_CORPUS + "Descriptions_TableINRA2018.txt", 'r') as f:
     INRA2018 = f.readlines()
 
 # Small function to remove trailing "\n"
@@ -73,7 +76,7 @@ FR_TEXT = INRA2018 + FEEDIPEDIA_FR
         
 TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
 IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
-DB = pd.read_excel(COLAB + "TableINRA2018_AvecDescriptions.xlsx", header=0)
+DB = pd.read_excel(PATH_TO_DB, header=0)
 
 # For robust evaluation, we split train/val/test sets
 # based on tuples of input numerical values

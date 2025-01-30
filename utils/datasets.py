@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-COLAB = "/content/drive/MyDrive/Projet_Fil_Rouge_AFZ/camembertaV2/"
+PATH_TO_DB = "/mnt/c/Users/rapha/OneDrive/Bureau/IODAA/Projet_Fourrage/INRA2018_TablesFourrages_etude_prediction_20241121.xlsx"
 
 TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
 IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
@@ -116,7 +116,7 @@ class FourragesDataset(Dataset):
     def __len__(self):
         return len(self.X)
 
-DB = pd.read_excel(COLAB + "INRA2018_TablesFourrages_etude_prediction_20241121.xlsx", header=1)
+DB = pd.read_excel(PATH_TO_DB, header=1)
 
 # For robust evaluation, we split train/val/test sets
 shuffled_idx = rd.sample([i for i in range(DB.shape[0])], len([i for i in range(DB.shape[0])]))
