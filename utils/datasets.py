@@ -8,6 +8,7 @@ rd.seed(SEED)
 import numpy as np
 np.random.seed(SEED)
 import pandas as pd
+import pickle as pkl
 
 # Scikit-learn imports
 from sklearn.preprocessing import MinMaxScaler
@@ -399,23 +400,17 @@ def show_predictions(predictions, true_targets, target_names, target_normalizer=
         plt.savefig(save_path, format='pdf', bbox_inches='tight')
     plt.show()
 
-if __name__ == "__main__":
-    EPOCHS = 100
-    LR = 1e-4
+def load_datasets(path):
+    with open(path, "rb") as f:
+        dataset_dico = pkl.load(f)
+    return dataset_dico
 
-    network = NotreModele()
+if __name__ == "__main__":
+    datasets_dico = {'Datasets':{'train':training_data, 'val':val_data, 'test':test_data},
+                     'Iterators':{'train':train_iterator, 'val':val_iterator, 'test':test_iterator}}
     
-    optimizer = torch.optim.Adam(network.parameters(), lr=LR, eps=5e-8)
-    module = train_loop(network, 
-                        EPOCHS, 
-                        train_dataset=train_iterator, 
-                        val_dataset=val_iterator,
-                        criterion=nn.SmoothL1Loss(reduction='mean'),
-                        optimizer=optimizer)
-    predictions, true_targets = evaluate(module, 
-                                         test_iterator, 
-                                         nn.SmoothL1Loss(reduction='mean'))
-    show_predictions(predictions, true_targets, TARGETS)
+    with open("./num_only_datasets.pkl", "wb") as f:
+        pkl.dump(datasets_dico, f)
 
 
     
