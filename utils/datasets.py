@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-PATH_TO_DB = "/mnt/c/Users/rapha/OneDrive/Bureau/IODAA/Projet_Fourrage/INRA2018_TablesFourrages_etude_prediction_20241121.xlsx"
+PATH_TO_DB = "/content/drive/MyDrive/Projet_Fil_Rouge_AFZ/camembertaV2/INRA2018_TablesFourrages_etude_prediction_20241121.xlsx"
 
 TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
 IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
@@ -298,7 +298,9 @@ def train_loop(module,
               val_dataset, 
               criterion, 
               optimizer,
-              lr_scheduler=None):
+              lr_scheduler=None,
+              batch_level_scheduler=False,
+              n_batches=1):
     """
     Executes the full training loop.
     
@@ -326,8 +328,13 @@ def train_loop(module,
                                       criterion, 
                                       optimizer)
             train_batch_losses.append(loss.item())
-        if lr_scheduler is not None:
-          lr_scheduler.step()
+            if lr_scheduler is not None and batch_level_scheduler:
+                if batch_idx % n_batches == 0:
+                    print("New LR:", lr_scheduler.get_last_lr()[0])
+                    lr_scheduler.step()
+        if lr_scheduler is not None and not batch_level_scheduler:
+            print(f"Epoch {epoch} LR:", lr_scheduler.get_last_lr()[0])
+            lr_scheduler.step()
         train_loss = np.mean(train_batch_losses)
 
         module.train(False)
