@@ -57,6 +57,7 @@ class ModeleSansDescription(BaseModel):
     """
     def __init__(self):
         super().__init__()
+        self.mode = 'num_only'
         self.regressor = nn.Sequential(nn.Linear(6,2048),
                                     #    nn.LayerNorm(2048),
                                        nn.ReLU(),
@@ -75,7 +76,7 @@ class ModeleSansDescription(BaseModel):
     def forward(self, x):
         return self.regressor(x)
     
-
+# Fodder Nutritional Value Model (ou Model de Valeurs Nutritionnelles de Fourrages)
 class FNVModel(BaseModel):
     """
     This model uses a pre-trained LLM to process fodder descriptions and extracts 
@@ -95,7 +96,7 @@ class FNVModel(BaseModel):
         self.feature_extractor = llm.to(self.device)
         for parameters in self.feature_extractor.parameters():
           parameters.to(self.device)
-
+        self.mode = 'with_desc'
         EMB_SIZE = 768
         
         self.repr_enricher = nn.Sequential(nn.Linear(6 + EMB_SIZE, 2048),
@@ -108,7 +109,7 @@ class FNVModel(BaseModel):
                                        nn.Linear(1024, 512),
                                        nn.ReLU())
         
-        self.prot_regressor = nn.Sequential(nn.Linear(512 + 6, 512),
+        self.regressor = nn.Sequential(nn.Linear(512 + 6, 512),
                                     #    nn.LayerNorm(2048),
                                        nn.ReLU(),
                                        nn.Linear(512, 256),
@@ -117,23 +118,12 @@ class FNVModel(BaseModel):
                                        nn.Dropout(0.1),
                                        nn.Linear(256, 256),
                                        nn.ReLU(),
-                                       nn.Linear(256, 3))
+                                       nn.Linear(256, 5))
         
-        self.en_regressor = nn.Sequential(nn.Linear(512 + 6, 512),
-                                    #    nn.LayerNorm(2048),
-                                       nn.ReLU(),
-                                       nn.Linear(512, 256),
-                                    #    nn.LayerNorm(512),
-                                       nn.ReLU(),
-                                       nn.Dropout(0.1),
-                                       nn.Linear(256, 256),
-                                       nn.ReLU(),
-                                       nn.Linear(256, 2))
         
         # Initialisation des paramètres
         for block in [self.repr_enricher, 
-                      self.prot_regressor,
-                      self.en_regressor]:
+                      self.regressor]:
             for layer in block:
                 if isinstance(layer, nn.Linear):
                     nn.init.kaiming_normal_(layer.weight)
@@ -142,18 +132,17 @@ class FNVModel(BaseModel):
                 for parameters in layer.parameters():
                   parameters.to(self.device)
 
-    def rdy_output(self, output, n_to_fill, cls_id=None):
-        """
-        Process LLM output to return last true positions instead of padding.
-        """
-        # Output is of size:  Batch x MaxLen x EmbSize
+    def rdy_output(self, output, n_to_fill, cls_pos=None):
+        """Extracts the last true positions from LLM output."""
         output = output.last_hidden_state
         maxlen = output.size()[1]
-        if cls_id is not None:
-          return output[:, 1]
+        if cls_pos is not None:
+            return output[:, cls_pos]
         return torch.stack([output[i, maxlen - n_missing - 1] for i, n_missing in enumerate(n_to_fill)])
-
+    
     def forward(self, x, desc, n_to_fill):
+        # cls is always positioned in a consistent way across examples.
+        cls_pos = desc[0].index(self.cls_id)
         # compute features
         text_features = self.feature_extractor(torch.tensor(desc,
                                                             dtype=torch.int,
@@ -162,14 +151,12 @@ class FNVModel(BaseModel):
         # prepare features for regression task
         text_features = self.rdy_output(text_features, 
                                         n_to_fill, 
-                                        cls_id=self.cls_id).to(self.device)
+                                        cls_pos=cls_pos).to(self.device)
 
         # enrich representations
         regression_emb = self.repr_enricher(torch.cat((text_features, x), dim=1))
-        prot_output = self.prot_regressor(torch.cat((regression_emb, x), dim=1)) # skip connection
-        en_output = self.en_regressor(torch.cat((regression_emb, x), dim=1))
-        
-        return torch.cat((en_output, prot_output), dim=1)
+        output = self.regressor(torch.cat((regression_emb, x), dim=1)) # skip connection
+        return output
 
 class CustomMLP(nn.Module):
     def __init__(self, input_dim: int, 
@@ -339,6 +326,7 @@ class CustomizableFNVModel(BaseModel):
         return torch.stack([output[i, maxlen - n_missing - 1] for i, n_missing in enumerate(n_to_fill)])
     
     def forward(self, x, desc, n_to_fill):
+        # cls is always positioned in a consistent way across examples.
         cls_pos = desc[0].index(self.cls_id)
         # print(desc)
         # print(self.cls_id)

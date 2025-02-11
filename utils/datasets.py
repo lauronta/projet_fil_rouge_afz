@@ -3,6 +3,9 @@ SEED = 62
 
 # Classic imports
 import os
+dir_path = os.path.dirname(os.path.realpath(__file__))
+os.chdir(dir_path)
+
 import random as rd
 rd.seed(SEED)
 import numpy as np
@@ -41,16 +44,16 @@ class FourragesDataset(Dataset):
                  target_cols=TARGETS,
                  num_cols=IN_FEATURES,
                  tokenizer=None,
-                 padding_token="[PAD]",
-                 cls_token="[CLS]",
                  device=None):
         self.device = device
         self.mode = mode
         if self.mode != "num_only":
             assert tokenizer is not None, "tokenizer argument must be specified when not in 'num_only' mode."
             self.tokenizer = tokenizer
-            self.pad_id = self.tokenizer(padding_token)['input_ids'][1]
-            self.cls_id = self.tokenizer(cls_token)['input_ids'][1]
+            padding_token = tokenizer.pad_token   # e.g., BERT typically shows "[PAD]"
+            cls_token = tokenizer.cls_token
+            self.pad_id = tokenizer.pad_token_id
+            self.cls_id = tokenizer.cls_token_id
 
         self.dataset_idx = dataset_idx
         self.db = db.iloc[self.dataset_idx, :]
@@ -198,9 +201,14 @@ def save_model_func(model, save_path, tag=""):
             path (str): The path to save the model file.
         """
         # Save model state dictionary and any additional information like architecture, optimizer, or history
-        torch.save({'model_state_dict': model.state_dict()}, 
-                   tag + "_" + save_path)
-        print(f"Model saved successfully at: {tag + '_' + save_path}")
+        if tag == "":
+            torch.save({'model_state_dict': model.state_dict()}, 
+                      save_path)
+            print(f"Model saved successfully at: {save_path}")
+        else:
+            torch.save({'model_state_dict': model.state_dict()}, 
+                      tag + "_" + save_path)
+            print(f"Model saved successfully at: {tag + '_' + save_path}")
 
 def load_model(model, save_path, device, tag=""):
         """
@@ -214,13 +222,16 @@ def load_model(model, save_path, device, tag=""):
             model: Loaded FNVModel instance ready for inference.
         """
         # Load checkpoint
-        checkpoint = torch.load(tag + "_" + save_path, map_location=device)
+        if tag == "":
+            checkpoint = torch.load(save_path, map_location=device)
+        else:
+            checkpoint = torch.load(tag + "_" + save_path, map_location=device)
         
 
         # Load state dictionary
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
-        
+
         print("Model loaded successfully.")
         return model
 
@@ -300,7 +311,10 @@ def train_loop(module,
               optimizer,
               lr_scheduler=None,
               batch_level_scheduler=False,
-              n_batches=1):
+              n_batches=1,
+              save_per_epoch=False,
+              save_path=None,
+              return_best_epoch_idx=False):
     """
     Executes the full training loop.
     
@@ -316,6 +330,8 @@ def train_loop(module,
     Returns:
         Trained model.
     """
+    best_val_loss = 0
+    best_epoch = 0
     for epoch in range(EPOCHS):
         module.train(True)
         train_batch_losses = []
@@ -345,9 +361,25 @@ def train_loop(module,
             val_batch_losses.append(loss.item())
         val_loss = np.mean(val_batch_losses)
 
+        if epoch == 0:
+            best_val_loss = val_loss
+            best_epoch = epoch + 1
+        else:
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_epoch = epoch + 1
+
         module.train_log(train_batch_losses, val_batch_losses, train_loss, val_loss)
         print(f"\n\033[1;33mEpoch {epoch+1} :\n\033[1;37mTraining Loss : {train_loss}")
         print(f"\033[1;32mValidation Loss : {val_loss}")
+        if save_per_epoch:
+            if save_path is not None:
+                save_path_epoch = save_path + f"_{epoch + 1}.pth"
+                module.save_model(save_path_epoch)
+            else:
+                raise ValueError("save_per_epoch was set to True but save_path is None. You must specify a save_path.")
+    if return_best_epoch_idx:
+        return module, best_epoch
     return module
 
 def evaluate(module, test_dataset, criterion):
@@ -414,9 +446,10 @@ def load_datasets(path):
 
 if __name__ == "__main__":
     datasets_dico = {'Datasets':{'train':training_data, 'val':val_data, 'test':test_data},
-                     'Iterators':{'train':train_iterator, 'val':val_iterator, 'test':test_iterator}}
+                     'Iterators':{'train':train_iterator, 'val':val_iterator, 'test':test_iterator},
+                     'Normalizer':{'input':INPUT_NORM, 'target':TARGET_NORM}}
     
-    with open("./num_only_datasets.pkl", "wb") as f:
+    with open("../num_only_datasets.pkl", "wb") as f:
         pkl.dump(datasets_dico, f)
 
 
