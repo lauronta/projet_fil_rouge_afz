@@ -12,6 +12,7 @@ import numpy as np
 np.random.seed(SEED)
 import pandas as pd
 import pickle as pkl
+from functools import partial
 
 # Scikit-learn imports
 from sklearn.preprocessing import MinMaxScaler
@@ -30,7 +31,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-PATH_TO_DB = "/content/drive/MyDrive/Projet_Fil_Rouge_AFZ/camembertaV2/INRA2018_TablesFourrages_etude_prediction_20241121.xlsx"
+PATH_TO_DB = "../../INRA2018_TablesFourrages_etude_prediction_20241121.xlsx" #/content/drive/MyDrive/Projet_Fil_Rouge_AFZ/camembertaV2/INRA2018_TablesFourrages_etude_prediction_20241121.xlsx"
 
 TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
 IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
@@ -119,7 +120,7 @@ class FourragesDataset(Dataset):
     def __len__(self):
         return len(self.X)
 
-def collate_fn(data):
+def collate_fn(data, input_norm, target_norm, device):
     if len(data[0]) == 2: # Si on reçoit (x,y)
         x = pd.concat([sample[0] for sample in data], axis=0)
         y = pd.concat([sample[1] for sample in data], axis=0)
@@ -131,11 +132,11 @@ def collate_fn(data):
         n_to_fill = list(pd.concat([sample[2].iloc[0] for sample in data], axis=0))
         y = pd.concat([sample[3] for sample in data], axis=0)
 
-    x = torch.tensor(INPUT_NORM.transform(x), 
-                              device=DEVICE,
-                              requires_grad=True).to(torch.float32)
-    y = torch.tensor(TARGET_NORM.transform(y), 
-                              device=DEVICE).to(torch.float32)
+    x = torch.tensor(input_norm.transform(x), 
+                            device=device,
+                            requires_grad=True).to(torch.float32)
+    y = torch.tensor(target_norm.transform(y), 
+                            device=device).to(torch.float32)
     if desc is not None:
         return x, desc, n_to_fill, y
     return x, y
@@ -428,27 +429,28 @@ if __name__ == "__main__":
                                     dataset_idx=test_idx,
                                     device=DEVICE)
 
+    custom_collate_fn = partial(collate_fn, input_norm=INPUT_NORM, target_norm=TARGET_NORM, device=DEVICE)
     # Creation of Dataloaders
     train_iterator = DataLoader(training_data, 
                                 batch_size=32, 
                                 shuffle=True, 
-                                collate_fn=collate_fn)
+                                collate_fn=custom_collate_fn)
 
     val_iterator = DataLoader(val_data, 
                                 batch_size=32, 
                                 shuffle=True, 
-                                collate_fn=collate_fn)
+                                collate_fn=custom_collate_fn)
 
     test_iterator = DataLoader(test_data,
                                 batch_size=32, 
                                 shuffle=True, 
-                                collate_fn=collate_fn)
+                                collate_fn=custom_collate_fn)
 
     datasets_dico = {'Datasets':{'train':training_data, 'val':val_data, 'test':test_data},
                      'Iterators':{'train':train_iterator, 'val':val_iterator, 'test':test_iterator},
                      'Normalizer':{'input':INPUT_NORM, 'target':TARGET_NORM}}
     
-    with open("../num_only_datasets.pkl", "wb") as f:
+    with open("../test_num_only_datasets.pkl", "wb") as f:
         pkl.dump(datasets_dico, f)
 
 

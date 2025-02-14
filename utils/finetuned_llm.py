@@ -137,9 +137,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load a Hugging Face model checkpoint.")
     parser.add_argument("checkpoint", type=str, help="The checkpoint string to load the model from.")
     parser.add_argument("mode", type=str, help="The type of regression head to use.")
+    parser.add_argument("eval_mode", default=0, type=str, help="Evaluation only, requires the module_path parameter to be passed.")
+    parser.add_argument("module_path", default=None, type=str, help="Path to module. Used when eval_mode is activated")
     args = parser.parse_args()
-    llm = args.checkpoint
+    
+    eval_mode = args.eval_mode
+    module_path = args.module_path
+    
+    if eval_mode == 1:
+        assert module_path is not None, "Module path was not specified but eval_mode was set to True. Provide a path to a saved module."
 
+    llm = args.checkpoint
     if llm != "None":
         regression_head_mode = args.mode
         if regression_head_mode not in ["best", "basic"]:
@@ -159,32 +167,47 @@ if __name__ == "__main__":
     dataset_dict = load_datasets(path_to_datasets)
 
     path_to_study = "../hyperparameter_study/optuna_study.pkl"
-    network, optimizer, scheduler, batch_level_steps, n_batches = prepare_training(path_to_study, llm, mode=regression_head_mode)
-
-    EPOCHS = 10
-    # network.to(dtype=torch.float16)
-    # torch.cuda.empty_cache()
-    module, best_epoch = train_loop(network, 
-                        EPOCHS, 
-                        train_dataset=dataset_dict['Iterators']['train'], 
-                        val_dataset=dataset_dict['Iterators']['val'],
-                        criterion=nn.SmoothL1Loss(reduction='mean'),
-                        optimizer=optimizer,
-                        lr_scheduler=scheduler,
-                        batch_level_scheduler=batch_level_steps,
-                        n_batches=n_batches,
-                        save_per_epoch=True,
-                        save_path=f"../models/{regression_head_mode}/fnv_with_{llm_name}",
-                        return_best_epoch_idx=True)
+    module, optimizer, scheduler, batch_level_steps, n_batches = prepare_training(path_to_study, llm, mode=regression_head_mode)
     
-    # Load best epoch model
-    module = load_model(module, f"../models/{regression_head_mode}/fnv_with_{llm_name}_{best_epoch}.pth", DEVICE)
+    if eval_mode == 0:
+        EPOCHS = 10
+        # network.to(dtype=torch.float16)
+        # torch.cuda.empty_cache()
+        module, best_epoch = train_loop(module, 
+                            EPOCHS, 
+                            train_dataset=dataset_dict['Iterators']['train'], 
+                            val_dataset=dataset_dict['Iterators']['val'],
+                            criterion=nn.SmoothL1Loss(reduction='mean'),
+                            optimizer=optimizer,
+                            lr_scheduler=scheduler,
+                            batch_level_scheduler=batch_level_steps,
+                            n_batches=n_batches,
+                            save_per_epoch=True,
+                            save_path=f"../models/{regression_head_mode}/fnv_with_{llm_name}",
+                            return_best_epoch_idx=True)
+        
+        # Load best epoch model
+        module = load_model(module, f"../models/{regression_head_mode}/fnv_with_{llm_name}_{best_epoch}.pth", DEVICE)
 
-    # Model evaluation
-    module.eval()
+        # Model evaluation
+        module.eval()
 
-    predictions, true_targets = evaluate(module, 
-                                         dataset_dict['Iterators']['test'], 
-                                         nn.SmoothL1Loss(reduction='mean'))
-    with open(f"../predictions/{regression_head_mode}/eval_fnv_with_{llm_name}_{best_epoch}", "wb") as f:
-        pkl.dump({'yhat':predictions, 'ytrue':true_targets}, f)
+        predictions, true_targets = evaluate(module, 
+                                            dataset_dict['Iterators']['test'], 
+                                            nn.SmoothL1Loss(reduction='mean'))
+        
+        path_predictions = f"../predictions/{regression_head_mode}/eval_fnv_with_{llm_name}_{best_epoch}.pt"
+        torch.save({'yhat':predictions, 'ytrue':true_targets}, path_predictions)
+    
+    else:
+        module = load_model(module, module_path, DEVICE)
+
+        # Model evaluation
+        module.eval()
+
+        predictions, true_targets = evaluate(module, 
+                                            dataset_dict['Iterators']['test'], 
+                                            nn.SmoothL1Loss(reduction='mean'))
+        model_name = module_path[module_path.index('fnv_with') - 8:]
+        path_predictions = f"../predictions/{regression_head_mode}/eval_{model_name}"
+        torch.save({'yhat':predictions, 'ytrue':true_targets}, path_predictions)
