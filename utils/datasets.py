@@ -119,30 +119,6 @@ class FourragesDataset(Dataset):
     def __len__(self):
         return len(self.X)
 
-DB = pd.read_excel(PATH_TO_DB, header=1)
-
-# For robust evaluation, we split train/val/test sets
-shuffled_idx = rd.sample([i for i in range(DB.shape[0])], len([i for i in range(DB.shape[0])]))
-
-train_idx = rd.sample(shuffled_idx, int(0.7 * DB.shape[0]))
-val_idx = rd.sample(list(set(shuffled_idx).difference(set(train_idx))), int(0.15 * DB.shape[0]))
-test_idx = list(set(shuffled_idx).difference(set(val_idx + train_idx)))
-
-# We verify that there are no shared indices between our train and our val/test sets
-assert set(test_idx).intersection(set(train_idx)) == set(), "There are shared indices."
-assert set(val_idx).intersection(set(train_idx)) == set(), "There are shared indices."
-
-# For better training, it is important to normalize
-# We make sure there is no data leakage through normalization 
-# by fitting the normalizer on the training set not modifying it afterwards
-INPUT_NORM = MinMaxScaler(feature_range=(-1,1))
-INPUT_NORM.fit(DB[IN_FEATURES].iloc[train_idx])
-
-TARGET_NORM = MinMaxScaler(feature_range=(-1,1))
-TARGET_NORM.fit(DB[TARGETS].iloc[train_idx])
-targets_max = TARGET_NORM.data_max_
-targets_min = TARGET_NORM.data_min_
-
 def collate_fn(data):
     if len(data[0]) == 2: # Si on reçoit (x,y)
         x = pd.concat([sample[0] for sample in data], axis=0)
@@ -163,35 +139,6 @@ def collate_fn(data):
     if desc is not None:
         return x, desc, n_to_fill, y
     return x, y
-
-# Creation of train/val/test Datasets
-training_data = FourragesDataset(db=DB, 
-                                dataset_idx=train_idx,
-                                device=DEVICE)
-
-val_data = FourragesDataset(db=DB, 
-                                dataset_idx=val_idx,
-                                device=DEVICE)
-
-test_data = FourragesDataset(db=DB, 
-                                dataset_idx=test_idx,
-                                device=DEVICE)
-
-# Creation of Dataloaders
-train_iterator = DataLoader(training_data, 
-                            batch_size=32, 
-                            shuffle=True, 
-                            collate_fn=collate_fn)
-
-val_iterator = DataLoader(val_data, 
-                            batch_size=32, 
-                            shuffle=True, 
-                            collate_fn=collate_fn)
-
-test_iterator = DataLoader(test_data,
-                            batch_size=32, 
-                            shuffle=True, 
-                            collate_fn=collate_fn)
 
 def save_model_func(model, save_path, tag=""):
         """
@@ -227,7 +174,6 @@ def load_model(model, save_path, device, tag=""):
         else:
             checkpoint = torch.load(tag + "_" + save_path, map_location=device)
         
-
         # Load state dictionary
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
@@ -445,6 +391,59 @@ def load_datasets(path):
     return dataset_dico
 
 if __name__ == "__main__":
+    DB = pd.read_excel(PATH_TO_DB, header=1)
+
+    # For robust evaluation, we split train/val/test sets
+    shuffled_idx = rd.sample([i for i in range(DB.shape[0])], len([i for i in range(DB.shape[0])]))
+
+    train_idx = rd.sample(shuffled_idx, int(0.7 * DB.shape[0]))
+    val_idx = rd.sample(list(set(shuffled_idx).difference(set(train_idx))), int(0.15 * DB.shape[0]))
+    test_idx = list(set(shuffled_idx).difference(set(val_idx + train_idx)))
+
+    # We verify that there are no shared indices between our train and our val/test sets
+    assert set(test_idx).intersection(set(train_idx)) == set(), "There are shared indices."
+    assert set(val_idx).intersection(set(train_idx)) == set(), "There are shared indices."
+
+    # For better training, it is important to normalize
+    # We make sure there is no data leakage through normalization 
+    # by fitting the normalizer on the training set not modifying it afterwards
+    INPUT_NORM = MinMaxScaler(feature_range=(-1,1))
+    INPUT_NORM.fit(DB[IN_FEATURES].iloc[train_idx])
+
+    TARGET_NORM = MinMaxScaler(feature_range=(-1,1))
+    TARGET_NORM.fit(DB[TARGETS].iloc[train_idx])
+    targets_max = TARGET_NORM.data_max_
+    targets_min = TARGET_NORM.data_min_
+
+    # Creation of train/val/test Datasets
+    training_data = FourragesDataset(db=DB, 
+                                    dataset_idx=train_idx,
+                                    device=DEVICE)
+
+    val_data = FourragesDataset(db=DB, 
+                                    dataset_idx=val_idx,
+                                    device=DEVICE)
+
+    test_data = FourragesDataset(db=DB, 
+                                    dataset_idx=test_idx,
+                                    device=DEVICE)
+
+    # Creation of Dataloaders
+    train_iterator = DataLoader(training_data, 
+                                batch_size=32, 
+                                shuffle=True, 
+                                collate_fn=collate_fn)
+
+    val_iterator = DataLoader(val_data, 
+                                batch_size=32, 
+                                shuffle=True, 
+                                collate_fn=collate_fn)
+
+    test_iterator = DataLoader(test_data,
+                                batch_size=32, 
+                                shuffle=True, 
+                                collate_fn=collate_fn)
+
     datasets_dico = {'Datasets':{'train':training_data, 'val':val_data, 'test':test_data},
                      'Iterators':{'train':train_iterator, 'val':val_iterator, 'test':test_iterator},
                      'Normalizer':{'input':INPUT_NORM, 'target':TARGET_NORM}}
