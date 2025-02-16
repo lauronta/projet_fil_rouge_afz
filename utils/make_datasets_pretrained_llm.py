@@ -53,12 +53,16 @@ def apply(func, iterable):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load a Hugging Face model checkpoint.")
     parser.add_argument("checkpoint", type=str, help="The checkpoint string to load the model from.")
-    
+    parser.add_argument("path_to_db", type=str, help="Path to the INRAe Table with descriptions and numerical values.")
+    parser.add_argument("path_to_corpus", nargs="?", type=str, default="../data/text/", help="Path to the corpus folder with descriptions files.")
+
     args = parser.parse_args()
 
     # Load the model
     checkpoint = args.checkpoint
     llm_name = checkpoint[checkpoint.index("/") + 1:]
+    PATH_TO_DB = args.path_to_db
+    PATH_TO_CORPUS = args.path_to_corpus
 
     LLM = AutoModel.from_pretrained(checkpoint).to(DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=True)
@@ -68,9 +72,6 @@ if __name__ == "__main__":
     print("CLS token ID:", cls_id)
 
     # Load the corpus
-    PATH_TO_CORPUS = '/content/drive/MyDrive/Projet_Fil_Rouge_AFZ/camembertaV2/'
-    PATH_TO_DB = '/content/drive/MyDrive/Projet_Fil_Rouge_AFZ/camembertaV2/TableINRA2018_AvecDescriptions.xlsx'
-
     with open(PATH_TO_CORPUS + "Descriptions_FEEDIPEDIA_ENG.txt", 'r') as f:
         FEEDIPEDIA_ENG = f.readlines()
 

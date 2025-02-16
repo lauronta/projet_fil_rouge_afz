@@ -158,9 +158,11 @@ def load_model(model, save_path, device, tag=""):
             checkpoint = torch.load(tag + "_" + save_path, map_location=device)
         
         # Load state dictionary
+        if 'feature_extractor' in model._modules.keys():
+            checkpoint['model_state_dict']["feature_extractor.embeddings.position_ids"] = model.feature_extractor.embeddings.position_ids
+        
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
-
         print("Model loaded successfully.")
         return model
 
