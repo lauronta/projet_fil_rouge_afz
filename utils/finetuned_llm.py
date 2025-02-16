@@ -208,6 +208,6 @@ if __name__ == "__main__":
         predictions, true_targets = evaluate(module, 
                                             dataset_dict['Iterators']['test'], 
                                             nn.SmoothL1Loss(reduction='mean'))
-        model_name = module_path[module_path.index('fnv_with') - 8:]
+        model_name = module_path[module_path.index('fnv_with'):]
         path_predictions = f"../predictions/{regression_head_mode}/eval_{model_name}"
         torch.save({'yhat':predictions, 'ytrue':true_targets}, path_predictions)
