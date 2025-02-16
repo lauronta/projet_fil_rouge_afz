@@ -34,6 +34,7 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForMaskedLM, pipelin
 
 # Custom Module imports
 from datasets import *
+from collators import CollateObject
 from deep_models import CustomizableFNVModel, FNVModel, ModeleSansDescription
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -132,6 +133,10 @@ def prepare_training(path_to_study, llm, mode="best"):
         n_batches = 1
     return network, optimizer, scheduler, batch_level_steps, n_batches
 
+import __main__
+# Initial setting of the collate_fn variable for the __main__ execution
+__main__.collate_fn = CollateObject
+
 if __name__ == "__main__":
     # Capture command line argument
     parser = argparse.ArgumentParser(description="Load a Hugging Face model checkpoint.")
@@ -165,6 +170,16 @@ if __name__ == "__main__":
         path_to_datasets = "../num_only_datasets.pkl"
     #print(path_to_datasets)
     dataset_dict = load_datasets(path_to_datasets)
+
+    # Actual setting of the collate_fn variable with proper instantiation
+    __main__.collate_fn = CollateObject(input_norm=dataset_dict["Normalizer"]["input"],
+                                        target_norm=dataset_dict["Normalizer"]["target"], 
+                                        device=DEVICE)
+    
+    # pickling the collator does not work well so after loading, the iterator's inner collate_fn 
+    # no longer works properly so we set it up again.
+    for iterator in dataset_dict["Iterators"].values():
+        iterator.collate_fn = __main__.collate_fn
 
     path_to_study = "../hyperparameter_study/optuna_study.pkl"
     module, optimizer, scheduler, batch_level_steps, n_batches = prepare_training(path_to_study, llm, mode=regression_head_mode)
