@@ -11,7 +11,7 @@ rd.seed(SEED)
 import numpy as np
 np.random.seed(SEED)
 import pandas as pd
-import dill as pkl
+import pickle as pkl
 from functools import partial
 
 # Scikit-learn imports
