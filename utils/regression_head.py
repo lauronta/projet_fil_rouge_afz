@@ -35,7 +35,6 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForMaskedLM, pipelin
 
 # Custom Module imports
 from datasets import *
-from collators import CollateObject
 from deep_models import CustomizableFNVModel
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -51,19 +50,7 @@ print("\nCLS token:", cls_id)
 
 
 # Datasets:
-# Initial setting of the collate_fn variable for the __main__ execution
-__main__.collate_fn = CollateObject
-
-dataset_dict = load_datasets("./pretrained_llm_datasets.pkl")
-
-# Actual setting of the collate_fn variable with proper instantiation
-__main__.collate_fn = CollateObject(input_norm=dataset_dict["Normalizer"]["input"],
-                                        target_norm=dataset_dict["Normalizer"]["target"], 
-                                        device=DEVICE)
-# pickling the collator does not work well so after loading, the iterator's inner collate_fn 
-# no longer works properly so we set it up again.
-for iterator in dataset_dict["Iterators"].values():
-    iterator.collate_fn = __main__.collate_fn
+dataset_dict = proper_loading("./pretrained_llm_datasets.pkl")
 
 EMB_SIZE = 768
 EMB_SIZE_FACTORS = [i for i in range(1, EMB_SIZE + 1) if EMB_SIZE % i == 0]

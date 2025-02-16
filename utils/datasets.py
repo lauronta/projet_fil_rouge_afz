@@ -373,6 +373,24 @@ def load_datasets(path):
         dataset_dico = pkl.load(f)
     return dataset_dico
 
+def proper_loading(path):
+    import __main__
+    from collators import CollateObject
+    # Initial setting of the collate_fn variable for the __main__ execution
+    __main__.collate_fn = CollateObject
+
+    dataset_dict = load_datasets(path)
+
+    # Actual setting of the collate_fn variable with proper instantiation
+    __main__.collate_fn = CollateObject(input_norm=dataset_dict["Normalizer"]["input"],
+                                            target_norm=dataset_dict["Normalizer"]["target"], 
+                                            device=DEVICE)
+    # pickling the collator does not work well so after loading, the iterator's inner collate_fn 
+    # no longer works properly so we set it up again.
+    for iterator in dataset_dict["Iterators"].values():
+        iterator.collate_fn = __main__.collate_fn
+    return dataset_dict
+
 if __name__ == "__main__":
     DB = pd.read_excel(PATH_TO_DB, header=1)
 
