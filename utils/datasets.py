@@ -12,6 +12,7 @@ import numpy as np
 np.random.seed(SEED)
 import pandas as pd
 import pickle as pkl
+import argparse
 from functools import partial
 
 # Scikit-learn imports
@@ -34,7 +35,6 @@ import seaborn as sns
 from collators import CollateObject
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-PATH_TO_DB = "../../INRA2018_TablesFourrages_etude_prediction_20241121.xlsx" #/content/drive/MyDrive/Projet_Fil_Rouge_AFZ/camembertaV2/INRA2018_TablesFourrages_etude_prediction_20241121.xlsx"
 
 TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
 IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
@@ -158,10 +158,17 @@ def load_model(model, save_path, device, tag=""):
             checkpoint = torch.load(tag + "_" + save_path, map_location=device)
         
         # Load state dictionary
-        if 'feature_extractor' in model._modules.keys():
-            checkpoint['model_state_dict']["feature_extractor.embeddings.position_ids"] = model.feature_extractor.embeddings.position_ids
-        
-        model.load_state_dict(checkpoint['model_state_dict'])
+        try:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        except:
+            missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            print("Missing keys", missing_keys)
+            print("Unexpected keys", unexpected_keys)
+
+            if 'feature_extractor' in model._modules.keys() and "feature_extractor.embeddings.position_ids" in missing_keys:
+                checkpoint['model_state_dict']["feature_extractor.embeddings.position_ids"] = model.feature_extractor.embeddings.position_ids
+            
+            model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
         print("Model loaded successfully.")
         return model
@@ -394,6 +401,13 @@ def proper_loading(path):
     return dataset_dict
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Retrieve Database Path.")
+    parser.add_argument("path_to_db", type=str, help="Path to the INRAe Table with descriptions and numerical values.")
+    
+    args = parser.parse_args()
+
+    PATH_TO_DB = args.path_to_db
+
     DB = pd.read_excel(PATH_TO_DB, header=1)
 
     # For robust evaluation, we split train/val/test sets

@@ -45,10 +45,8 @@ class BaseModel(nn.Module):
         """
         # Save model state dictionary and any additional information like architecture, optimizer, or history
         state_dict = self.state_dict()
-        if 'feature_extractor' in self.__dict__.keys():
-            state_dict['feature_extractor.embeddings.position_ids'] = self.feature_extractor.embeddings.position_ids
         torch.save({
-            'model_state_dict': self.state_dict(),
+            'model_state_dict': state_dict,
             'model_class': self.__class__,
             'history': self.history
         }, path)
