@@ -37,6 +37,7 @@ from transformers import AutoTokenizer, AutoModel, AutoModelForMaskedLM, pipelin
 
 # Custom Module imports
 from datasets import *
+from collators import CollateObject
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = DEVICE
@@ -155,6 +156,7 @@ if __name__ == "__main__":
 
     # Creation of Dataloaders
     BATCH = 64
+    collate_fn = CollateObject(input_norm=INPUT_NORM, target_norm=TARGET_NORM, device=DEVICE)
     train_iterator = DataLoader(training_data, 
                                 batch_size=BATCH, 
                                 shuffle=True, 
