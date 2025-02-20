@@ -84,7 +84,7 @@ class FNVModel(BaseModel):
     embeddings representing these descriptions and combines them with
     numerical input values to make its final predictions.
     """
-    def __init__(self, llm, device, cls_id=None):
+    def __init__(self, llm, device, cls_id=None, input_mode="all"):
         """
         llm : LLM model from a call of AutoModel.from_pretrained(checkpoint)
         device : Device on which to store the model
@@ -97,30 +97,31 @@ class FNVModel(BaseModel):
         self.feature_extractor = llm.to(self.device)
         for parameters in self.feature_extractor.parameters():
           parameters.to(self.device)
-        self.mode = 'with_desc'
+        self.mode = 'with_desc' # Necessary because of how we designed training functions
+        self.input_mode = input_mode
         EMB_SIZE = 768
         
-        self.repr_enricher = nn.Sequential(nn.Linear(6 + EMB_SIZE, 2048),
-                                    #    nn.LayerNorm(2048),
-                                       nn.ReLU(),
-                                       nn.Linear(2048, 1024),
-                                    #    nn.LayerNorm(512),
-                                       nn.ReLU(),
-                                       nn.Dropout(0.1),
-                                       nn.Linear(1024, 512),
-                                       nn.ReLU())
+        self.num_features_dim = 6 if self.input_mode != "desc_only" else 0
         
-        self.regressor = nn.Sequential(nn.Linear(512 + 6, 512),
+        self.repr_enricher = nn.Sequential(nn.Linear(self.num_features_dim + EMB_SIZE, 2048),
+                                #    nn.LayerNorm(2048),
+                                    nn.ReLU(),
+                                    nn.Linear(2048, 1024),
+                                #    nn.LayerNorm(512),
+                                    nn.ReLU(),
+                                    nn.Dropout(0.1),
+                                    nn.Linear(1024, 512),
+                                    nn.ReLU())
+        self.regressor = nn.Sequential(nn.Linear(self.num_features_dim + 512, 512),
                                     #    nn.LayerNorm(2048),
-                                       nn.ReLU(),
-                                       nn.Linear(512, 256),
+                                    nn.ReLU(),
+                                    nn.Linear(512, 256),
                                     #    nn.LayerNorm(512),
-                                       nn.ReLU(),
-                                       nn.Dropout(0.1),
-                                       nn.Linear(256, 256),
-                                       nn.ReLU(),
-                                       nn.Linear(256, 5))
-        
+                                    nn.ReLU(),
+                                    nn.Dropout(0.1),
+                                    nn.Linear(256, 256),
+                                    nn.ReLU(),
+                                    nn.Linear(256, 5))
         
         # Initialisation des paramètres
         for block in [self.repr_enricher, 
@@ -155,8 +156,12 @@ class FNVModel(BaseModel):
                                         cls_pos=cls_pos).to(self.device)
 
         # enrich representations
-        regression_emb = self.repr_enricher(torch.cat((text_features, x), dim=1))
-        output = self.regressor(torch.cat((regression_emb, x), dim=1)) # skip connection
+        if self.input_mode == 'desc_only':
+            regression_emb = self.repr_enricher(text_features)
+            output = self.regressor(regression_emb)
+        else:
+            regression_emb = self.repr_enricher(torch.cat((text_features, x), dim=1))
+            output = self.regressor(torch.cat((regression_emb, x), dim=1)) # skip connection
         return output
 
 class CustomMLP(nn.Module):
@@ -175,13 +180,19 @@ class CustomMLP(nn.Module):
         
         for dim in layer_dims:
             layers.append(nn.Linear(prev_dim, dim))
-            if use_batchnorm:
-                layers.append(nn.BatchNorm1d(dim))
-            if use_layernorm:
-                layers.append(nn.LayerNorm(dim))
-            layers.append(activation_fn)
-            if dropout > 0:
-                layers.append(nn.Dropout(dropout))
+
+            # If this is not the last layer
+            if dim != len(layer_dims) - 1:
+                if use_batchnorm:
+                    layers.append(nn.BatchNorm1d(dim))
+                if use_layernorm:
+                    layers.append(nn.LayerNorm(dim))
+            
+                layers.append(activation_fn)
+
+                # If dropout is not null and if this is not the last layer
+                if dropout > 0:
+                    layers.append(nn.Dropout(dropout))
             prev_dim = dim
         
         self.model = nn.Sequential(*layers)
@@ -224,6 +235,7 @@ class CustomizableFNVModel(BaseModel):
                  repr_layers: List[int],
                  regressor_layers: List[int],
                  activation_fn: Callable[[torch.Tensor], torch.Tensor] = nn.ReLU(),
+                 input_mode: str = "all",
                  use_batchnorm: bool = False,
                  use_layernorm: bool = False,
                  dropout: float = 0.1,
@@ -245,6 +257,9 @@ class CustomizableFNVModel(BaseModel):
         self.feature_extractor = llm.to(self.device)
         self.cls_id = cls_id
         self.mode = 'with_desc'
+        self.input_mode = input_mode
+        self.num_features_dim = 6 if self.input_mode != "desc_only" else 0
+
         for param in self.feature_extractor.parameters():
             param.to(self.device)
         
@@ -273,7 +288,7 @@ class CustomizableFNVModel(BaseModel):
             repr_layers += [EMB_SIZE] # We want to output the same dimension
             # Representation Enricher
             self.repr_enricher = CustomMLP(
-                input_dim=6 + EMB_SIZE,
+                input_dim=self.num_features_dim + EMB_SIZE,
                 layer_dims=repr_layers,
                 activation_fn=activation_fn,
                 use_batchnorm=use_batchnorm,
@@ -284,14 +299,21 @@ class CustomizableFNVModel(BaseModel):
         if self.use_attn:
             attn_dropout = 0.1 if attn_dropout is None else attn_dropout
             nheads = 2 if nheads is None else nheads
-            self.improve_repr = AttentiveEmbedding(6, 
-                                                  EMB_SIZE, 
-                                                  n_head=nheads,
-                                                  attn_dropout=attn_dropout)
+            if self.input_mode == "desc_only":
+                # Use self attention in that case
+                self.improve_repr = AttentiveEmbedding(EMB_SIZE, 
+                                                EMB_SIZE, 
+                                                n_head=nheads,
+                                                attn_dropout=attn_dropout)
+            else:
+                self.improve_repr = AttentiveEmbedding(6, 
+                                                    EMB_SIZE, 
+                                                    n_head=nheads,
+                                                    attn_dropout=attn_dropout)
         if self.separate_mlp:
             # Protein Regressor
             self.prot_regressor = CustomMLP(
-                input_dim=EMB_SIZE + 6,
+                input_dim=EMB_SIZE + self.num_features_dim,
                 layer_dims=regressor_layers + [3],
                 activation_fn=activation_fn,
                 use_batchnorm=use_batchnorm,
@@ -301,7 +323,7 @@ class CustomizableFNVModel(BaseModel):
             
             # Energy Regressor
             self.en_regressor = CustomMLP(
-                input_dim=EMB_SIZE + 6,
+                input_dim=EMB_SIZE + self.num_features_dim,
                 layer_dims=regressor_layers + [2],
                 activation_fn=activation_fn,
                 use_batchnorm=use_batchnorm,
@@ -310,7 +332,7 @@ class CustomizableFNVModel(BaseModel):
             )
         else:
             self.regressor = CustomMLP(
-                input_dim=EMB_SIZE + 6,
+                input_dim=EMB_SIZE + self.num_features_dim,
                 layer_dims=regressor_layers + [5],
                 activation_fn=activation_fn,
                 use_batchnorm=use_batchnorm,
@@ -337,31 +359,57 @@ class CustomizableFNVModel(BaseModel):
         text_features = self.rdy_output(text_features, n_to_fill, cls_pos=cls_pos).to(self.device)
         
         if self.use_attn:
-            if self.use_skip and self.add_and_norm:
-                text_features = self.clean_skip(self.improve_repr(text_features, x),
-                                                text_features)
-            elif self.use_skip and not self.add_and_norm:
-                text_features = self.improve_repr(text_features, x) + text_features
+            if self.input_mode == 'desc_only':
+                if self.use_skip and self.add_and_norm:
+                    text_features = self.clean_skip(self.improve_repr(text_features, text_features),
+                                                    text_features)
+                elif self.use_skip and not self.add_and_norm:
+                    text_features = self.improve_repr(text_features, text_features) + text_features
+                else:
+                    text_features = self.improve_repr(text_features, text_features)
             else:
-                text_features = self.improve_repr(text_features, x)
+                if self.use_skip and self.add_and_norm:
+                    text_features = self.clean_skip(self.improve_repr(text_features, x),
+                                                    text_features)
+                elif self.use_skip and not self.add_and_norm:
+                    text_features = self.improve_repr(text_features, x) + text_features
+                else:
+                    text_features = self.improve_repr(text_features, x)
         
         if self.use_repr_enricher:
-            if self.use_skip:
-                text_features = self.clean_skip(self.repr_enricher(torch.cat((text_features, x), dim=1)),
-                                                text_features)
-            elif self.use_skip and not self.add_and_norm:
-                text_features = self.repr_enricher(torch.cat((text_features, x), dim=1)) + text_features
+            if self.input_mode == 'desc_only':
+                if self.use_skip:
+                    text_features = self.clean_skip(self.repr_enricher(text_features),
+                                                    text_features)
+                elif self.use_skip and not self.add_and_norm:
+                    text_features = self.repr_enricher(text_features) + text_features
+                else:
+                    text_features = self.repr_enricher(text_features)
             else:
-                text_features = self.repr_enricher(torch.cat((text_features, x), dim=1))
+                if self.use_skip:
+                    text_features = self.clean_skip(self.repr_enricher(torch.cat((text_features, x), dim=1)),
+                                                    text_features)
+                elif self.use_skip and not self.add_and_norm:
+                    text_features = self.repr_enricher(torch.cat((text_features, x), dim=1)) + text_features
+                else:
+                    text_features = self.repr_enricher(torch.cat((text_features, x), dim=1))
         
-        if self.separate_mlp:
-            prot_output = self.prot_regressor(torch.cat((text_features, x), dim=1))
-            en_output = self.en_regressor(torch.cat((text_features, x), dim=1))
-            output = torch.cat((en_output, prot_output), dim=1)
+        if self.input_mode == "desc_only":
+            if self.separate_mlp:
+                prot_output = self.prot_regressor(text_features)
+                en_output = self.en_regressor(text_features)
+                output = torch.cat((en_output, prot_output), dim=1)
+            else:
+                output = self.regressor(text_features)    
         else:
-            output = self.regressor(torch.cat((text_features, x), dim=1))    
+            if self.separate_mlp:
+                prot_output = self.prot_regressor(torch.cat((text_features, x), dim=1))
+                en_output = self.en_regressor(torch.cat((text_features, x), dim=1))
+                output = torch.cat((en_output, prot_output), dim=1)
+            else:
+                output = self.regressor(torch.cat((text_features, x), dim=1))    
         return output
-
+    
 if __name__ == "__main__":
     model = ModeleSansDescription()
     print(model.history)

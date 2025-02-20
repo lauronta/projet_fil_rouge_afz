@@ -68,10 +68,15 @@ class FourragesDataset(Dataset):
         self.X = self.db[self.input_features].copy()
 
         if self.mode != "num_only":
-            self.desc = self.db["Descriptions"].copy()
-            combined = pd.concat([self.X, self.desc], axis=1).dropna()
-            self.X = combined[self.input_features]
-            self.desc = combined["Descriptions"] if self.mode != "num_only" else None
+            if mode == 'desc_only':
+                self.desc = self.db["Descriptions"].copy()
+                self.X = pd.DataFrame(self.desc, columns=["Descriptions"], index=self.desc.index).dropna()
+                self.desc = combined["Descriptions"] if self.mode != "num_only" else None
+            else:
+                self.desc = self.db["Descriptions"].copy()
+                combined = pd.concat([self.X, self.desc], axis=1).dropna()
+                self.X = combined[self.input_features]
+                self.desc = combined["Descriptions"] if self.mode != "num_only" else None
             assert np.sum(pd.isna(self.desc)) == 0, "There are NA's !!"
 
             print("\nTokenizing dataset..")

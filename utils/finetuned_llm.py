@@ -61,6 +61,8 @@ def prepare_training(path_to_study, llm, mode="best"):
         print("CLS token:", cls_token) 
         print("CLS token ID:", cls_id)
 
+    input_mode = "desc_only" if "desc_only" in llm else "all"
+
     if mode == 'best':
         best_regression_head = load_hyperparameter_study(path_to_study)
 
@@ -88,6 +90,7 @@ def prepare_training(path_to_study, llm, mode="best"):
                         activation_fn=activation_fn(),
                         use_batchnorm=use_batchnorm, 
                         use_layernorm=use_layernorm,
+                        input_mode=input_mode,
                         separate_mlp=separate_mlp,
                         repr_enricher=repr_enricher,
                         use_attn=use_attn, 
@@ -114,8 +117,8 @@ def prepare_training(path_to_study, llm, mode="best"):
                                                         LR, LR*10, step_size_up=10)}
 
         scheduler = scheduler_dict[scheduler]
-    elif llm != "None":
-        network = FNVModel(LLM, device, cls_id=cls_id).to(DEVICE)
+    elif llm != "num_only":
+        network = FNVModel(LLM, device, cls_id=cls_id, input_mode=input_mode).to(DEVICE)
     
         optimizer = torch.optim.Adam(network.parameters(), lr=5e-4, eps=5e-8)
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,
@@ -148,7 +151,7 @@ if __name__ == "__main__":
         assert module_path is not None, "Module path was not specified but eval_mode was set to True. Provide a path to a saved module."
 
     llm = args.checkpoint
-    if llm != "None":
+    if llm != "num_only":
         regression_head_mode = args.mode
         if regression_head_mode not in ["best", "basic"]:
             raise ValueError("Regression head argument must be either best or basic.")
@@ -161,7 +164,7 @@ if __name__ == "__main__":
             path_to_datasets = "../bert-base-uncased_datasets.pkl"
     else:
         regression_head_mode = "basic"
-        llm_name = "num_only"
+        llm_name = llm
         path_to_datasets = "../num_only_datasets.pkl"
     #print(path_to_datasets)
     dataset_dict = proper_loading(path_to_datasets)
