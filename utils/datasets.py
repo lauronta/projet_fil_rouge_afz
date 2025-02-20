@@ -316,7 +316,7 @@ def train_loop(module,
         module.train_log(train_batch_losses, val_batch_losses, train_loss, val_loss)
         print(f"\n\033[1;33mEpoch {epoch+1} :\n\033[1;37mTraining Loss : {train_loss}")
         print(f"\033[1;32mValidation Loss : {val_loss}")
-        if save_per_epoch and (old_best_epoch is None) or (old_best_epoch != best_epoch):
+        if save_per_epoch and ((old_best_epoch is None) or (old_best_epoch != best_epoch)):
             if save_path is not None:
                 if old_best_epoch is not None:
                     print("\nRemoving previous best..")
