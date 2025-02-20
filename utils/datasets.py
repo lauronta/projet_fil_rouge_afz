@@ -304,6 +304,7 @@ def train_loop(module,
             val_batch_losses.append(loss.item())
         val_loss = np.mean(val_batch_losses)
 
+        old_best_epoch = best_epoch if epoch > 0 else None
         if epoch == 0:
             best_val_loss = val_loss
             best_epoch = epoch + 1
@@ -315,9 +316,14 @@ def train_loop(module,
         module.train_log(train_batch_losses, val_batch_losses, train_loss, val_loss)
         print(f"\n\033[1;33mEpoch {epoch+1} :\n\033[1;37mTraining Loss : {train_loss}")
         print(f"\033[1;32mValidation Loss : {val_loss}")
-        if save_per_epoch:
+        if save_per_epoch and (old_best_epoch is None) or (old_best_epoch != best_epoch):
             if save_path is not None:
-                save_path_epoch = save_path + f"_{epoch + 1}.pth"
+                if old_best_epoch is not None:
+                    print("\nRemoving previous best..")
+                    os.remove(save_path + f"_{old_best_epoch}.pth")
+
+                print("\nSaving current best..")
+                save_path_epoch = save_path + f"_{best_epoch}.pth"
                 module.save_model(save_path_epoch)
             else:
                 raise ValueError("save_per_epoch was set to True but save_path is None. You must specify a save_path.")
