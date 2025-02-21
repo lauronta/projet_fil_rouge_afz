@@ -344,7 +344,7 @@ def train_loop(module,
             if save_path is not None:
                 if old_best_epoch is not None:
                     print("\nRemoving previous best..")
-                    rmtree(save_path + f"_{old_best_epoch}") # removes folder and files of previous sved state
+                    shutil.rmtree(save_path + f"_{old_best_epoch}") # removes folder and files of previous sved state
 
                 print("\nSaving current best..")
                 save_path_epoch = save_path + f"_{best_epoch}"
