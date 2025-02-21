@@ -99,6 +99,7 @@ class ModeleSansDescription(BaseModel):
     def forward(self, x):
         return self.regressor(x)
     
+    @classmethod
     def from_pretrained(cls, save_directory: str, device, config=None):
         model = cls()
 
@@ -210,6 +211,7 @@ class FNVModel(BaseModel):
             output = self.regressor(torch.cat((regression_emb, x), dim=1)) # skip connection
         return output
     
+    @classmethod
     def from_pretrained(cls, save_directory: str, llm, device, cls_id=None, config=None):
         if config is None:
             # Load configuration.
