@@ -2,7 +2,7 @@
 SEED = 62
 
 # Classic imports
-import os
+import os, shutil
 dir_path = os.path.dirname(os.path.realpath(__file__))
 os.chdir(dir_path)
 
@@ -344,7 +344,7 @@ def train_loop(module,
             if save_path is not None:
                 if old_best_epoch is not None:
                     print("\nRemoving previous best..")
-                    os.remove(save_path + f"_{old_best_epoch}")
+                    rmtree(save_path + f"_{old_best_epoch}") # removes folder and files of previous sved state
 
                 print("\nSaving current best..")
                 save_path_epoch = save_path + f"_{best_epoch}"
