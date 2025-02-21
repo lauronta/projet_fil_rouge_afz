@@ -7,6 +7,7 @@ import random as rd
 rd.seed(SEED)
 import numpy as np
 np.random.seed(SEED)
+import json
 from typing import List, Optional, Callable
 
 # PyTorch imports
@@ -36,21 +37,39 @@ class BaseModel(nn.Module):
         self.history["test"].append({"test_batch_losses":test_batch_losses,
                                 "test_loss":test_loss})
     
-    def save_model(self, path):
+    def save_model(self, save_directory: str):
         """
         Saves the model architecture and state using state-of-the-art PyTorch methods.
 
         Parameters:
             path (str): The path to save the model file.
         """
-        # Save model state dictionary and any additional information like architecture, optimizer, or history
-        state_dict = self.state_dict()
-        torch.save({
-            'model_state_dict': state_dict,
-            'model_class': self.__class__,
-            'history': self.history
-        }, path)
-        print(f"Model saved successfully at: {path}")
+        # # Save model state dictionary and any additional information like architecture, optimizer, or history
+        # state_dict = self.state_dict()
+        # torch.save({
+        #     'model_state_dict': state_dict,
+        #     'model_class': self.__class__,
+        #     'history': self.history
+        # }, path)
+        # print(f"Model saved successfully at: {path}")
+
+        os.makedirs(save_directory, exist_ok=True)
+        
+        # Save state dictionary.
+        state_path = os.path.join(save_directory, "pytorch_model.bin")
+        torch.save(self.state_dict(), state_path)
+        
+        # Save configuration.
+        config_path = os.path.join(save_directory, "config.json")
+        with open(config_path, "w") as f:
+            json.dump(self.config, f)
+        
+        # Optionally, you can also save training history.
+        history_path = os.path.join(save_directory, "history.json")
+        with open(history_path, "w") as f:
+            json.dump(self.history, f)
+        
+        print(f"Model saved successfully in {save_directory}")
         
 class ModeleSansDescription(BaseModel):
     """
@@ -59,6 +78,9 @@ class ModeleSansDescription(BaseModel):
     def __init__(self):
         super().__init__()
         self.mode = 'num_only'
+
+        self.config = {"class_name":self.__class__.__name__}
+
         self.regressor = nn.Sequential(nn.Linear(6,2048),
                                     #    nn.LayerNorm(2048),
                                        nn.ReLU(),
@@ -76,6 +98,24 @@ class ModeleSansDescription(BaseModel):
 
     def forward(self, x):
         return self.regressor(x)
+    
+    def from_pretrained(cls, save_directory: str, device, config=None):
+        model = cls()
+
+        # Load state dictionary.
+        state_path = os.path.join(save_directory, "pytorch_model.bin")
+        state_dict = torch.load(state_path, map_location=device)
+        model.load_state_dict(state_dict)
+        
+        # Load training history
+        history_path = os.path.join(save_directory, "history.json")
+        with open(history_path, "r") as f:
+            model.history["pretraining"] =  json.load(f)
+
+        model.to(device)
+        print(f"Model loaded successfully from {save_directory}")
+        return model
+    
     
 # Fodder Nutritional Value Model (ou Model de Valeurs Nutritionnelles de Fourrages)
 class FNVModel(BaseModel):
@@ -102,6 +142,12 @@ class FNVModel(BaseModel):
         EMB_SIZE = 768
         
         self.num_features_dim = 6 if self.input_mode != "desc_only" else 0
+        
+        self.config = {"class_name":self.__class__.__name__,
+                    "cls_id":self.cls_id,
+                    "mode":self.mode,
+                    "input_mode": self.input_mode
+                    }
         
         self.repr_enricher = nn.Sequential(nn.Linear(self.num_features_dim + EMB_SIZE, 2048),
                                 #    nn.LayerNorm(2048),
@@ -163,6 +209,35 @@ class FNVModel(BaseModel):
             regression_emb = self.repr_enricher(torch.cat((text_features, x), dim=1))
             output = self.regressor(torch.cat((regression_emb, x), dim=1)) # skip connection
         return output
+    
+    def from_pretrained(cls, save_directory: str, llm, device, cls_id=None, config=None):
+        if config is None:
+            # Load configuration.
+            config_path = os.path.join(save_directory, "config.json")
+            with open(config_path, "r") as f:
+                config = json.load(f)
+
+        cls_id = cls_id if cls_id is not None else config["cls_id"]
+        model = cls(llm=llm, 
+                    device=device,
+                    cls_id=cls_id,
+                    input_mode=config["input_mode"])
+        model.mode = config["mode"]
+
+        # Load state dictionary.
+        state_path = os.path.join(save_directory, "pytorch_model.bin")
+        state_dict = torch.load(state_path, map_location=device)
+        model.load_state_dict(state_dict)
+        
+        # Load training history
+        history_path = os.path.join(save_directory, "history.json")
+        with open(history_path, "r") as f:
+            model.history["pretraining"] =  json.load(f)
+
+        model.to(device)
+        print(f"Model loaded successfully from {save_directory}")
+        return model
+
 
 class CustomMLP(nn.Module):
     def __init__(self, input_dim: int, 
@@ -278,6 +353,25 @@ class CustomizableFNVModel(BaseModel):
         # When using skip connections, wether to add and normalize or not
         self.add_and_norm = add_and_norm
         self.add_and_norm_normalizer = add_and_norm_normalizer if add_and_norm_normalizer is not None else nn.LayerNorm
+
+        self.config = {
+            "repr_layers": repr_layers,
+            "regressor_layers": regressor_layers,
+            "activation_fn": self.activation_fn.__class__.__name__, 
+            "input_mode": self.input_mode,
+            "use_batchnorm": self.use_batchnorm,
+            "use_layernorm": self.use_layernorm,
+            "dropout": self.dropout,
+            "cls_id": self.cls_id,
+            "separate_mlp": self.separate_mlp,
+            "repr_enricher": self.repr_enricher,
+            "use_attn": self.use_attn,
+            "attn_dropout": self.attn_dropout,
+            "nheads": self.nheads,
+            "use_skip": self.use_skip,
+            "add_and_norm": self.add_and_norm,
+            "add_and_norm": self.add_and_norm_normalizer.__class__.__name__
+        }
 
         EMB_SIZE = 768
         
@@ -409,6 +503,64 @@ class CustomizableFNVModel(BaseModel):
             else:
                 output = self.regressor(torch.cat((text_features, x), dim=1))    
         return output
+    
+    @classmethod
+    def from_pretrained(cls, save_directory: str, llm, device, cls_id=None, config=None):
+        if config is None:
+            # Load configuration.
+            config_path = os.path.join(save_directory, "config.json")
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        
+        activation_fn_mapping = {
+            "ReLU": nn.ReLU(),
+            "GELU": nn.GELU(),
+            "SiLU": nn.SiLU(),
+            "Mish": nn.Mish(),
+        }
+        # If the field is not found in config, use nn.ReLU()
+        activation_fn = activation_fn_mapping.get(config["activation_fn"], nn.ReLU())
+
+
+        normalizer_mapping = {"LayerNorm": nn.LayerNorm,
+                              "RMSNorm": nn.RMSNorm,
+                              "BatchNorm1d": nn.BatchNorm1d}
+        add_and_norm_normalizer = normalizer_mapping.get(config["add_and_norm_normalizer"], None)
+        
+        cls_id = cls_id if cls_id is not None else config["cls_id"]
+        # Instantiate the model.
+        model = cls(llm=llm,
+                    device=device,
+                    repr_layers=config["repr_layers"],
+                    regressor_layers=config["regressor_layers"],
+                    activation_fn=activation_fn,
+                    input_mode=config["input_mode"],
+                    use_batchnorm=config["use_batchnorm"],
+                    use_layernorm=config["use_layernorm"],
+                    dropout=config["dropout"],
+                    cls_id=cls_id,
+                    separate_mlp=config["separate_mlp"],
+                    repr_enricher=config["repr_enricher"],
+                    use_attn=config["use_attn"],
+                    attn_dropout=config["attn_dropout"],
+                    nheads=config["nheads"],
+                    use_skip=config["use_skip"],
+                    add_and_norm=config["add_and_norm"],
+                    add_and_norm_normalizer=add_and_norm_normalizer)
+        
+        # Load state dictionary.
+        state_path = os.path.join(save_directory, "pytorch_model.bin")
+        state_dict = torch.load(state_path, map_location=device)
+        model.load_state_dict(state_dict)
+        
+        # Load training history
+        history_path = os.path.join(save_directory, "history.json")
+        with open(history_path, "r") as f:
+            model.history["pretraining"] =  json.load(f)
+
+        model.to(device)
+        print(f"Model loaded successfully from {save_directory}")
+        return model
     
 if __name__ == "__main__":
     model = ModeleSansDescription()

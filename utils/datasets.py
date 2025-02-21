@@ -13,6 +13,7 @@ np.random.seed(SEED)
 import pandas as pd
 import pickle as pkl
 import argparse
+import json
 from functools import partial
 
 # Scikit-learn imports
@@ -31,8 +32,11 @@ torch.autograd.set_detect_anomaly(True)
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from transformers import AutoTokenizer, AutoModel
+
 #Custom Imports
 from collators import CollateObject
+from deep_models import *
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -145,38 +149,58 @@ def save_model_func(model, save_path, tag=""):
                       tag + "_" + save_path)
             print(f"Model saved successfully at: {tag + '_' + save_path}")
 
-def load_model(model, save_path, device, tag=""):
-        """
-        Loads the saved model and returns it for inference.
+def load_model(path, checkpoint, device):
+    # Load config
+    config_path = os.path.join(path, "config.json")
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    
+    class_name_mapping = {"ModeleSansDescription":ModeleSansDescription,
+                          "FNVModel":FNVModel,
+                          "CustomizableFNVModel":CustomizableFNVModel}
+    class_type = class_name_mapping.get(config["class_name"])
 
-        Parameters:
-            path (str): Path to the saved model file.
-            device (torch.device): The device to map the model to (e.g., 'cuda' or 'cpu').
+    if checkpoint is not None:
+        llm = AutoModel.from_pretrained(checkpoint).to(device)
+        tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=True)
+        cls_id = tokenizer.cls_token_id
+        model = class_type.from_pretrained(path, llm, device, cls_id=cls_id, config=config)
+    else:
+        model = class_type.from_pretrained(path, device, config=config)
+    return model
+
+# def load_model(model, save_path, device, tag=""):
+#         """
+#         Loads the saved model and returns it for inference.
+
+#         Parameters:
+#             path (str): Path to the saved model file.
+#             device (torch.device): The device to map the model to (e.g., 'cuda' or 'cpu').
             
-        Returns:
-            model: Loaded FNVModel instance ready for inference.
-        """
-        # Load checkpoint
-        if tag == "":
-            checkpoint = torch.load(save_path, map_location=device)
-        else:
-            checkpoint = torch.load(tag + "_" + save_path, map_location=device)
+#         Returns:
+#             model: Loaded FNVModel instance ready for inference.
+#         """
+#         # Load checkpoint
+#         if tag == "":
+#             checkpoint = torch.load(save_path, map_location=device)
+#         else:
+#             checkpoint = torch.load(tag + "_" + save_path, map_location=device)
         
-        # Load state dictionary
-        try:
-            model.load_state_dict(checkpoint['model_state_dict'])
-        except:
-            missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
-            print("Missing keys", missing_keys)
-            print("Unexpected keys", unexpected_keys)
+#         # Load state dictionary
+#         try:
+#             model.load_state_dict(checkpoint['model_state_dict'])
+#         except:
+#             missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+#             print("Missing keys", missing_keys)
+#             print("Unexpected keys", unexpected_keys)
 
-            if 'feature_extractor' in model._modules.keys() and "feature_extractor.embeddings.position_ids" in missing_keys:
-                checkpoint['model_state_dict']["feature_extractor.embeddings.position_ids"] = model.feature_extractor.embeddings.position_ids
+#             if 'feature_extractor' in model._modules.keys() and "feature_extractor.embeddings.position_ids" in missing_keys:
+#                 checkpoint['model_state_dict']["feature_extractor.embeddings.position_ids"] = model.feature_extractor.embeddings.position_ids
             
-            model.load_state_dict(checkpoint['model_state_dict'])
-        model.to(device)
-        print("Model loaded successfully.")
-        return model
+#             model.load_state_dict(checkpoint['model_state_dict'])
+#         model.to(device)
+#         print("Model loaded successfully.")
+#         return model
 
 def train_step(module, 
                 batch, 
@@ -320,10 +344,10 @@ def train_loop(module,
             if save_path is not None:
                 if old_best_epoch is not None:
                     print("\nRemoving previous best..")
-                    os.remove(save_path + f"_{old_best_epoch}.pth")
+                    os.remove(save_path + f"_{old_best_epoch}")
 
                 print("\nSaving current best..")
-                save_path_epoch = save_path + f"_{best_epoch}.pth"
+                save_path_epoch = save_path + f"_{best_epoch}"
                 module.save_model(save_path_epoch)
             else:
                 raise ValueError("save_per_epoch was set to True but save_path is None. You must specify a save_path.")

@@ -193,7 +193,9 @@ if __name__ == "__main__":
                             return_best_epoch_idx=True)
         
         # Load best epoch model
-        module = load_model(module, f"../models/{regression_head_mode}/fnv_with_{llm_name}_{best_epoch}.pth", DEVICE)
+        module = load_model(f"../models/{regression_head_mode}/fnv_with_{llm_name}_{best_epoch}",
+                            checkpoint=llm,
+                            device=DEVICE) #load_model(module, f"../models/{regression_head_mode}/fnv_with_{llm_name}_{best_epoch}.pth", DEVICE)
 
         # Model evaluation
         module.eval()
@@ -206,7 +208,7 @@ if __name__ == "__main__":
         torch.save({'yhat':predictions, 'ytrue':true_targets}, path_predictions)
     
     else:
-        module = load_model(module, module_path, DEVICE)
+        module = load_model(module_path, checkpoint=llm, device=DEVICE) #load_model(module, module_path, DEVICE)
 
         # Model evaluation
         module.eval()

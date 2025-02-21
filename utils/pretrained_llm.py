@@ -177,30 +177,30 @@ class FNVModel(nn.Module):
         }, path)
         print(f"Model saved successfully at: {path}")
 
-def load_model(path, device):
-    """
-    Loads the saved model and returns it for inference.
+# def load_model(path, device):
+#     """
+#     Loads the saved model and returns it for inference.
 
-    Parameters:
-        path (str): Path to the saved model file.
-        device (torch.device): The device to map the model to (e.g., 'cuda' or 'cpu').
+#     Parameters:
+#         path (str): Path to the saved model file.
+#         device (torch.device): The device to map the model to (e.g., 'cuda' or 'cpu').
         
-    Returns:
-        model: Loaded FNVModel instance ready for inference.
-    """
-    # Load checkpoint
-    checkpoint = torch.load(path, map_location=device)
+#     Returns:
+#         model: Loaded FNVModel instance ready for inference.
+#     """
+#     # Load checkpoint
+#     checkpoint = torch.load(path, map_location=device)
     
-    # Initialize the model architecture
-    model_class = checkpoint['model_class']
-    model = model_class().to(device)
+#     # Initialize the model architecture
+#     model_class = checkpoint['model_class']
+#     model = model_class().to(device)
     
-    # Load state dictionary
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()  # Set to evaluation mode
+#     # Load state dictionary
+#     model.load_state_dict(checkpoint['model_state_dict'])
+#     model.eval()  # Set to evaluation mode
     
-    print("Model loaded successfully.")
-    return model
+#     print("Model loaded successfully.")
+#     return model
 
 class LogCoshLoss(nn.Module):
     def forward(self, y_pred, y_true):
@@ -372,10 +372,10 @@ if __name__ == "__main__":
                         optimizer=optimizer,
                         lr_scheduler=scheduler)
 
-    save_path = COLAB + "FNV_camemBERTaV2.pth"
+    save_path = COLAB + "FNV_camemBERTaV2"
     module.save_model(save_path)
 
-    module = load_model(save_path, DEVICE)
+    module = load_model(save_path, checkpoint=checkpoint, device=DEVICE)
     module.eval()
 
     predictions, true_targets = evaluate(module, 
