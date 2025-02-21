@@ -140,8 +140,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load a Hugging Face model checkpoint.")
     parser.add_argument("checkpoint", type=str, help="The checkpoint string to load the model from.")
     parser.add_argument("mode", type=str, help="The type of regression head to use.")
-    parser.add_argument("eval_mode", default=0, type=str, help="Evaluation only, requires the module_path parameter to be passed.")
-    parser.add_argument("module_path", default=None, type=str, help="Path to module. Used when eval_mode is activated")
+    parser.add_argument("eval_mode", nargs="?", default=0, type=str, help="Evaluation only, requires the module_path parameter to be passed.")
+    parser.add_argument("module_path", nargs="?", default=None, type=str, help="Path to module. Used when eval_mode is activated")
     args = parser.parse_args()
     
     eval_mode = args.eval_mode
@@ -155,6 +155,9 @@ if __name__ == "__main__":
         regression_head_mode = args.mode
         if regression_head_mode not in ["best", "basic"]:
             raise ValueError("Regression head argument must be either best or basic.")
+        if "desc_only" in llm:
+            llm = "almanach/camembertav2-base" if "camemberta" in llm.lower() else "google-bert/bert-base-uncased"
+        
         llm_name = llm[llm.index("/") + 1:]
         #print(f"../models/{regression_head_mode}/fnv_with_{llm_name}")
         # Datasets:
