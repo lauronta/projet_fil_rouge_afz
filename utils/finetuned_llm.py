@@ -46,7 +46,7 @@ def load_hyperparameter_study(path_to_study):
     return best_regression_head
 
 def prepare_training(path_to_study, llm, mode="best"):
-    if llm != "None":
+    if llm not in ["None", "num_only"]:
         # Load the model
         LLM = AutoModel.from_pretrained(llm).to(DEVICE)
         tokenizer = AutoTokenizer.from_pretrained(llm)
@@ -117,7 +117,7 @@ def prepare_training(path_to_study, llm, mode="best"):
                                                         LR, LR*10, step_size_up=10)}
 
         scheduler = scheduler_dict[scheduler]
-    elif llm != "num_only":
+    elif llm not in ["None", "num_only"]:
         network = FNVModel(LLM, device, cls_id=cls_id, input_mode=input_mode).to(DEVICE)
     
         optimizer = torch.optim.Adam(network.parameters(), lr=5e-4, eps=5e-8)
