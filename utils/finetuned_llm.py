@@ -70,32 +70,32 @@ def prepare_training(path_to_study, llm, mode="best"):
         regressor_layers = [best_regression_head.params[key] for key in best_regression_head.params.keys() if 'reg_layer_' in key]
         activation_fn = best_regression_head.params["activation_function"]
         dropout = best_regression_head.params["dropout"]
-        use_batchnorm = best_regression_head.params["use_batchnorm"]
-        use_layernorm = best_regression_head.params["use_layernorm"]
+        # use_batchnorm = best_regression_head.params["use_batchnorm"]
+        # use_layernorm = best_regression_head.params["use_layernorm"]
         separate_mlp = best_regression_head.params["separate_mlp"]
         repr_enricher = best_regression_head.params["repr_enricher"]
-        use_attn = best_regression_head.params["use_attn"]
-        attn_drop = None if use_attn == False else best_regression_head.params["attn_drop"]
-        attn_heads = None if use_attn == False else best_regression_head.params["nheads"]
+        # use_attn = best_regression_head.params["use_attn"]
+        # attn_drop = None if use_attn == False else best_regression_head.params["attn_drop"]
+        # attn_heads = None if use_attn == False else best_regression_head.params["nheads"]
         use_skip = best_regression_head.params["use_skip"]
-        add_and_norm = best_regression_head.params["add_and_norm"]
-        add_and_norm_normalizer = best_regression_head.params["add_and_norm_normalizer"]
+        add_and_norm = best_regression_head.params["add_and_norm"] if use_skip else False
+        add_and_norm_normalizer = best_regression_head.params["add_and_norm_normalizer"] if use_skip else None
 
-        batch_level_steps = best_regression_head.params["batch_level_steps"]
-        n_batches = best_regression_head.params["n_batches"]
-        scheduler = best_regression_head.params["scheduler"]
+        batch_level_steps = True # best_regression_head.params["batch_level_steps"]
+        n_batches = 65 # best_regression_head.params["n_batches"]
+        # scheduler = best_regression_head.params["scheduler"]
 
         network = CustomizableFNVModel(LLM, device, repr_layers, regressor_layers, 
                         dropout=dropout, 
                         activation_fn=activation_fn(),
-                        use_batchnorm=use_batchnorm, 
-                        use_layernorm=use_layernorm,
+                        # use_batchnorm=use_batchnorm, 
+                        # use_layernorm=use_layernorm,
                         input_mode=input_mode,
                         separate_mlp=separate_mlp,
                         repr_enricher=repr_enricher,
-                        use_attn=use_attn, 
-                        attn_dropout=attn_drop,
-                        nheads=attn_heads,
+                        # use_attn=use_attn, 
+                        # attn_dropout=attn_drop,
+                        # nheads=attn_heads,
                         cls_id=cls_id,
                         use_skip=use_skip,
                         add_and_norm=add_and_norm,
@@ -107,16 +107,20 @@ def prepare_training(path_to_study, llm, mode="best"):
         LR = best_regression_head.params["LR"]
         print(f"Learning Rate:", LR)
         
+        # optimizer = torch.optim.Adam(network.parameters(), lr=LR, eps=5e-8)
+
+        # scheduler_dict = {"exp":torch.optim.lr_scheduler.ExponentialLR(optimizer,
+        #                                                 gamma=0.97), 
+        #                 "cos":torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
+        #                                                 T_max=N_BATCHES // n_batches), 
+        #                 "cyclic":torch.optim.lr_scheduler.CyclicLR(optimizer,
+        #                                                 LR, LR*10, step_size_up=10)}
+
+        # scheduler = scheduler_dict[scheduler]
+
         optimizer = torch.optim.Adam(network.parameters(), lr=LR, eps=5e-8)
-
-        scheduler_dict = {"exp":torch.optim.lr_scheduler.ExponentialLR(optimizer,
-                                                        gamma=0.97), 
-                        "cos":torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
-                                                        T_max=N_BATCHES // n_batches), 
-                        "cyclic":torch.optim.lr_scheduler.CyclicLR(optimizer,
-                                                        LR, LR*10, step_size_up=10)}
-
-        scheduler = scheduler_dict[scheduler]
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,
+                                                        gamma=0.97)
     elif llm not in ["None", "num_only"]:
         network = FNVModel(LLM, device, cls_id=cls_id, input_mode=input_mode).to(DEVICE)
     

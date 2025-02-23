@@ -355,24 +355,24 @@ class CustomizableFNVModel(BaseModel):
         # When using skip connections, wether to add and normalize or not
         self.add_and_norm = add_and_norm
         self.add_and_norm_normalizer = add_and_norm_normalizer if add_and_norm_normalizer is not None else nn.LayerNorm
-
-        self.config = {
+        
+        self.config = {"class_name":self.__class__.__name__,
             "repr_layers": repr_layers,
             "regressor_layers": regressor_layers,
-            "activation_fn": self.activation_fn.__class__.__name__, 
+            "activation_fn": activation_fn.__class__.__name__, 
             "input_mode": self.input_mode,
-            "use_batchnorm": self.use_batchnorm,
-            "use_layernorm": self.use_layernorm,
-            "dropout": self.dropout,
+            "use_batchnorm": use_batchnorm,
+            "use_layernorm": use_layernorm,
+            "dropout": dropout,
             "cls_id": self.cls_id,
             "separate_mlp": self.separate_mlp,
-            "repr_enricher": self.repr_enricher,
+            "use_repr_enricher": self.use_repr_enricher,
             "use_attn": self.use_attn,
-            "attn_dropout": self.attn_dropout,
-            "nheads": self.nheads,
+            "attn_dropout": attn_dropout,
+            "nheads": nheads,
             "use_skip": self.use_skip,
             "add_and_norm": self.add_and_norm,
-            "add_and_norm": self.add_and_norm_normalizer.__class__.__name__
+            "add_and_norm_normalizer": self.add_and_norm_normalizer.__class__.__name__
         }
 
         EMB_SIZE = 768
@@ -542,7 +542,7 @@ class CustomizableFNVModel(BaseModel):
                     dropout=config["dropout"],
                     cls_id=cls_id,
                     separate_mlp=config["separate_mlp"],
-                    repr_enricher=config["repr_enricher"],
+                    repr_enricher=config["use_repr_enricher"],
                     use_attn=config["use_attn"],
                     attn_dropout=config["attn_dropout"],
                     nheads=config["nheads"],

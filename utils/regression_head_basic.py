@@ -12,6 +12,7 @@ np.random.seed(SEED)
 import pandas as pd
 import pickle as pkl
 import optuna
+import optuna.visualization.matplotlib as ov
 import __main__
 
 # Scikit-learn imports
@@ -59,8 +60,8 @@ EMB_SIZE_FACTORS = [factor for factor in EMB_SIZE_FACTORS if factor <= 64]
 def objective(trial):
     # If we use suggest_categorical, there will not be efficient comparison between chosen hidden sizes, so 
     #To work around that, we use suggest_int to choose the power of 2. That way it will compare across powers of 2.
-    repr_layers = [2**trial.suggest_int(f"repr_layer_{i}", 3, 11) for i in range(trial.suggest_int("repr_layers", 1, 5))]
-    regressor_layers = [2**trial.suggest_int(f"reg_layer_{i}", 3, 11) for i in range(trial.suggest_int("reg_layers", 1, 5))]
+    repr_layers = [2**trial.suggest_int(f"repr_layer_{i}", 4, 11) for i in range(trial.suggest_int("repr_layers", 1, 3))]
+    regressor_layers = [2**trial.suggest_int(f"reg_layer_{i}", 4, 11) for i in range(trial.suggest_int("reg_layers", 1, 3))]
     activation_fn = trial.suggest_categorical("activation_function", [nn.ReLU, nn.GELU, nn.SiLU, nn.Mish])
     dropout = trial.suggest_float("dropout", 0.0, 0.5)
     separate_mlp = trial.suggest_categorical("separate_mlp", [True, False])
@@ -137,5 +138,11 @@ if __name__ == "__main__":
         print(f"    {key}: {value}")
     
     # Sauvegarde de l'étude pour une utilisation future
-    with open("./basic_optuna_study.pkl", "wb") as f:
+    with open("../hyperparameter_study/optuna_study.pkl", "wb") as f:
         pkl.dump(study, f)
+
+    # Sauvegarde des visualisations des résultats
+    ov.plot_param_importances(study)
+    plt.savefig("../hyperparameter_study/param_importance_plot.pdf",
+                        format="pdf", 
+                                    bbox_inches='tight')
