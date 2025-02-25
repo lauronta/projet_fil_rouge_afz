@@ -41,7 +41,7 @@ from deep_models import *
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
-IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
+IN_FEATURES =  ["MS", "MM", "MAT", "CB", "NDF", "ADF", "EE"]
 
 class FourragesDataset(Dataset):
     def __init__(self, mode="num_only",  
@@ -443,8 +443,8 @@ if __name__ == "__main__":
 
     PATH_TO_DB = args.path_to_db
 
-    DB = pd.read_excel(PATH_TO_DB, header=1)
-
+    DB = pd.read_excel(PATH_TO_DB)
+    # print(DB.head())
     # For robust evaluation, we split train/val/test sets
     shuffled_idx = rd.sample([i for i in range(DB.shape[0])], len([i for i in range(DB.shape[0])]))
 

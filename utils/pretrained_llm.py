@@ -38,7 +38,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = DEVICE
 
 TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
-IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
+IN_FEATURES =  ["MS", "MM", "MAT", "CB", "NDF", "ADF", "EE"]
 
 # Small function to remove trailing "\n"
 def remove_trailing_n_char(string, n=2):

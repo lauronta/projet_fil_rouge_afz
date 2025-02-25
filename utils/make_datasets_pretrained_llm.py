@@ -90,7 +90,7 @@ if __name__ == "__main__":
     FR_TEXT = INRA2018 + FEEDIPEDIA_FR
             
     TARGETS = ["UFL", "UFV", "BPR", "PDI", "PDIA"]
-    IN_FEATURES =  ["MM", "MAT", "CB", "NDF", "ADF", "EE"]
+    IN_FEATURES =  ["MS", "MM", "MAT", "CB", "NDF", "ADF", "EE"]
     DB = pd.read_excel(PATH_TO_DB, header=0)
 
     # For robust evaluation, we split train/val/test sets

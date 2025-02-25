@@ -56,8 +56,9 @@ class BaseModel(nn.Module):
         os.makedirs(save_directory, exist_ok=True)
         
         # Save state dictionary.
+        state_dict = self.state_dict()
         state_path = os.path.join(save_directory, "pytorch_model.bin")
-        torch.save(self.state_dict(), state_path)
+        torch.save(state_dict, state_path)
         
         # Save configuration.
         config_path = os.path.join(save_directory, "config.json")
@@ -81,7 +82,7 @@ class ModeleSansDescription(BaseModel):
 
         self.config = {"class_name":self.__class__.__name__}
 
-        self.regressor = nn.Sequential(nn.Linear(6,2048),
+        self.regressor = nn.Sequential(nn.Linear(7,2048),
                                     #    nn.LayerNorm(2048),
                                        nn.ReLU(),
                                        nn.Linear(2048, 512),
@@ -106,7 +107,12 @@ class ModeleSansDescription(BaseModel):
         # Load state dictionary.
         state_path = os.path.join(save_directory, "pytorch_model.bin")
         state_dict = torch.load(state_path, map_location=device)
-        model.load_state_dict(state_dict)
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, 
+                                                              strict=False)
+        if missing_keys != []:
+            print(f"WARNING : {missing_keys} were not found in state_dict. this may or may not be normal.")
+        if unexpected_keys != []:
+            print(f"WARNING : {missing_keys} were given but not are bound to the current class. this may or may not be normal.")
         
         # Load training history
         history_path = os.path.join(save_directory, "history.json")
@@ -142,7 +148,7 @@ class FNVModel(BaseModel):
         self.input_mode = input_mode
         EMB_SIZE = 768
         
-        self.num_features_dim = 6 if self.input_mode != "desc_only" else 0
+        self.num_features_dim = 7 if self.input_mode != "desc_only" else 0
         
         self.config = {"class_name":self.__class__.__name__,
                     "cls_id":self.cls_id,
@@ -204,6 +210,7 @@ class FNVModel(BaseModel):
 
         # enrich representations
         if self.input_mode == 'desc_only':
+            # print("DESC ONLY")
             regression_emb = self.repr_enricher(text_features)
             output = self.regressor(regression_emb)
         else:
@@ -229,7 +236,12 @@ class FNVModel(BaseModel):
         # Load state dictionary.
         state_path = os.path.join(save_directory, "pytorch_model.bin")
         state_dict = torch.load(state_path, map_location=device)
-        model.load_state_dict(state_dict)
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, 
+                                                              strict=False)
+        if missing_keys != []:
+            print(f"WARNING : {missing_keys} were not found in state_dict. this may or may not be normal.")
+        if unexpected_keys != []:
+            print(f"WARNING : {missing_keys} were given but not are bound to the current class. this may or may not be normal.")
         
         # Load training history
         history_path = os.path.join(save_directory, "history.json")
@@ -319,7 +331,7 @@ class CustomizableFNVModel(BaseModel):
                  cls_id: int = None,
                  separate_mlp: bool = True,
                  repr_enricher: bool = True,
-                 use_attn: bool = True, 
+                 use_attn: bool = False, 
                  attn_dropout: float = None,
                  nheads: int = None,
                  use_skip: bool = False,
@@ -335,7 +347,7 @@ class CustomizableFNVModel(BaseModel):
         self.cls_id = cls_id
         self.mode = 'with_desc'
         self.input_mode = input_mode
-        self.num_features_dim = 6 if self.input_mode != "desc_only" else 0
+        self.num_features_dim = 7 if self.input_mode != "desc_only" else 0
 
         for param in self.feature_extractor.parameters():
             param.to(self.device)
@@ -376,12 +388,9 @@ class CustomizableFNVModel(BaseModel):
         }
 
         EMB_SIZE = 768
-        
-        if self.use_skip and self.add_and_norm:
-            self.clean_skip = AddandNorm(self.add_and_norm_normalizer(EMB_SIZE))
 
         if self.use_repr_enricher:
-            repr_layers += [EMB_SIZE] # We want to output the same dimension
+            #repr_layers += [EMB_SIZE] # We want to output the same dimension
             # Representation Enricher
             self.repr_enricher = CustomMLP(
                 input_dim=self.num_features_dim + EMB_SIZE,
@@ -391,25 +400,29 @@ class CustomizableFNVModel(BaseModel):
                 use_layernorm=use_layernorm,
                 dropout=dropout
             )
-        
+        LATENT_SIZE = repr_layers[-1] if self.use_repr_enricher else EMB_SIZE
+        if self.use_skip and self.add_and_norm:
+            self.clean_skip = AddandNorm(self.add_and_norm_normalizer(LATENT_SIZE))
+
         if self.use_attn:
             attn_dropout = 0.1 if attn_dropout is None else attn_dropout
             nheads = 2 if nheads is None else nheads
+            
             if self.input_mode == "desc_only":
                 # Use self attention in that case
-                self.improve_repr = AttentiveEmbedding(EMB_SIZE, 
-                                                EMB_SIZE, 
+                self.improve_repr = AttentiveEmbedding(LATENT_SIZE, 
+                                                LATENT_SIZE, 
                                                 n_head=nheads,
                                                 attn_dropout=attn_dropout)
             else:
-                self.improve_repr = AttentiveEmbedding(6, 
-                                                    EMB_SIZE, 
+                self.improve_repr = AttentiveEmbedding(LATENT_SIZE,
+                                                    self.num_features_dim, 
                                                     n_head=nheads,
                                                     attn_dropout=attn_dropout)
         if self.separate_mlp:
             # Protein Regressor
             self.prot_regressor = CustomMLP(
-                input_dim=EMB_SIZE + self.num_features_dim,
+                input_dim=LATENT_SIZE + self.num_features_dim,
                 layer_dims=regressor_layers + [3],
                 activation_fn=activation_fn,
                 use_batchnorm=use_batchnorm,
@@ -419,7 +432,7 @@ class CustomizableFNVModel(BaseModel):
             
             # Energy Regressor
             self.en_regressor = CustomMLP(
-                input_dim=EMB_SIZE + self.num_features_dim,
+                input_dim=LATENT_SIZE + self.num_features_dim,
                 layer_dims=regressor_layers + [2],
                 activation_fn=activation_fn,
                 use_batchnorm=use_batchnorm,
@@ -428,7 +441,7 @@ class CustomizableFNVModel(BaseModel):
             )
         else:
             self.regressor = CustomMLP(
-                input_dim=EMB_SIZE + self.num_features_dim,
+                input_dim=LATENT_SIZE + self.num_features_dim,
                 layer_dims=regressor_layers + [5],
                 activation_fn=activation_fn,
                 use_batchnorm=use_batchnorm,
@@ -456,41 +469,42 @@ class CustomizableFNVModel(BaseModel):
         
         if self.use_attn:
             if self.input_mode == 'desc_only':
-                if self.use_skip and self.add_and_norm:
-                    text_features = self.clean_skip(self.improve_repr(text_features, text_features),
-                                                    text_features)
-                elif self.use_skip and not self.add_and_norm:
-                    text_features = self.improve_repr(text_features, text_features) + text_features
-                else:
-                    text_features = self.improve_repr(text_features, text_features)
+                # if self.use_skip and self.add_and_norm:
+                #     text_features = self.clean_skip(self.improve_repr(text_features, text_features),
+                #                                     text_features)
+                # elif self.use_skip and not self.add_and_norm:
+                #     text_features = self.improve_repr(text_features, text_features) + text_features
+                # else:
+                text_features = self.improve_repr(text_features, text_features)
             else:
-                if self.use_skip and self.add_and_norm:
-                    text_features = self.clean_skip(self.improve_repr(text_features, x),
-                                                    text_features)
-                elif self.use_skip and not self.add_and_norm:
-                    text_features = self.improve_repr(text_features, x) + text_features
-                else:
-                    text_features = self.improve_repr(text_features, x)
+                # if self.use_skip and self.add_and_norm:
+                #     text_features = self.clean_skip(self.improve_repr(text_features, x),
+                #                                     text_features)
+                # elif self.use_skip and not self.add_and_norm:
+                #     text_features = self.improve_repr(text_features, x) + text_features
+                # else:
+                text_features = self.improve_repr(text_features, x)
         
         if self.use_repr_enricher:
             if self.input_mode == 'desc_only':
-                if self.use_skip:
-                    text_features = self.clean_skip(self.repr_enricher(text_features),
-                                                    text_features)
-                elif self.use_skip and not self.add_and_norm:
-                    text_features = self.repr_enricher(text_features) + text_features
-                else:
-                    text_features = self.repr_enricher(text_features)
+                # if self.use_skip:
+                #     text_features = self.clean_skip(self.repr_enricher(text_features),
+                #                                     text_features)
+                # elif self.use_skip and not self.add_and_norm:
+                #     text_features = self.repr_enricher(text_features) + text_features
+                # else:
+                text_features = self.repr_enricher(text_features)
             else:
-                if self.use_skip:
-                    text_features = self.clean_skip(self.repr_enricher(torch.cat((text_features, x), dim=1)),
-                                                    text_features)
-                elif self.use_skip and not self.add_and_norm:
-                    text_features = self.repr_enricher(torch.cat((text_features, x), dim=1)) + text_features
-                else:
-                    text_features = self.repr_enricher(torch.cat((text_features, x), dim=1))
+                # if self.use_skip:
+                #     text_features = self.clean_skip(self.repr_enricher(torch.cat((text_features, x), dim=1)),
+                #                                     text_features)
+                # elif self.use_skip and not self.add_and_norm:
+                #     text_features = self.repr_enricher(torch.cat((text_features, x), dim=1)) + text_features
+                # else:
+                text_features = self.repr_enricher(torch.cat((text_features, x), dim=1))
         
         if self.input_mode == "desc_only":
+            # print("DESC ONLY")
             if self.separate_mlp:
                 prot_output = self.prot_regressor(text_features)
                 en_output = self.en_regressor(text_features)
@@ -553,7 +567,12 @@ class CustomizableFNVModel(BaseModel):
         # Load state dictionary.
         state_path = os.path.join(save_directory, "pytorch_model.bin")
         state_dict = torch.load(state_path, map_location=device)
-        model.load_state_dict(state_dict)
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, 
+                                                              strict=False)
+        if missing_keys != []:
+            print(f"WARNING : {missing_keys} were not found in state_dict. this may or may not be normal.")
+        if unexpected_keys != []:
+            print(f"WARNING : {missing_keys} were given but not are bound to the current class. this may or may not be normal.")
         
         # Load training history
         history_path = os.path.join(save_directory, "history.json")

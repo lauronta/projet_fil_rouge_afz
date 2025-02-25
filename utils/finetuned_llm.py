@@ -45,7 +45,7 @@ def load_hyperparameter_study(path_to_study):
     best_regression_head = optuna_study.best_trial
     return best_regression_head
 
-def prepare_training(path_to_study, llm, mode="best"):
+def prepare_training(path_to_study, llm, mode="best", desc_only=False):
     if llm not in ["None", "num_only"]:
         # Load the model
         LLM = AutoModel.from_pretrained(llm).to(DEVICE)
@@ -60,14 +60,14 @@ def prepare_training(path_to_study, llm, mode="best"):
                 cls_id = 101
         print("CLS token:", cls_token) 
         print("CLS token ID:", cls_id)
-
-    input_mode = "desc_only" if "desc_only" in llm else "all"
+    print(llm)
+    input_mode = "desc_only" if desc_only else "all"
 
     if mode == 'best':
         best_regression_head = load_hyperparameter_study(path_to_study)
 
-        repr_layers = [best_regression_head.params[key] for key in best_regression_head.params.keys() if 'repr_layer_' in key]
-        regressor_layers = [best_regression_head.params[key] for key in best_regression_head.params.keys() if 'reg_layer_' in key]
+        repr_layers = [2**best_regression_head.params[key] for key in best_regression_head.params.keys() if 'repr_layer_' in key]
+        regressor_layers = [2**best_regression_head.params[key] for key in best_regression_head.params.keys() if 'reg_layer_' in key]
         activation_fn = best_regression_head.params["activation_function"]
         dropout = best_regression_head.params["dropout"]
         # use_batchnorm = best_regression_head.params["use_batchnorm"]
@@ -82,9 +82,9 @@ def prepare_training(path_to_study, llm, mode="best"):
         add_and_norm_normalizer = best_regression_head.params["add_and_norm_normalizer"] if use_skip else None
 
         batch_level_steps = True # best_regression_head.params["batch_level_steps"]
-        n_batches = 65 # best_regression_head.params["n_batches"]
+        n_batches = best_regression_head.params["n_batches"] * 10 
         # scheduler = best_regression_head.params["scheduler"]
-
+        print(input_mode)
         network = CustomizableFNVModel(LLM, device, repr_layers, regressor_layers, 
                         dropout=dropout, 
                         activation_fn=activation_fn(),
@@ -101,8 +101,6 @@ def prepare_training(path_to_study, llm, mode="best"):
                         add_and_norm=add_and_norm,
                         add_and_norm_normalizer=add_and_norm_normalizer)
         network.to(device)
-        
-        N_BATCHES = len(dataset_dict['Iterators']['train'])
 
         LR = best_regression_head.params["LR"]
         print(f"Learning Rate:", LR)
@@ -122,6 +120,7 @@ def prepare_training(path_to_study, llm, mode="best"):
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,
                                                         gamma=0.97)
     elif llm not in ["None", "num_only"]:
+        print(input_mode)
         network = FNVModel(LLM, device, cls_id=cls_id, input_mode=input_mode).to(DEVICE)
     
         optimizer = torch.optim.Adam(network.parameters(), lr=5e-4, eps=5e-8)
@@ -155,13 +154,14 @@ if __name__ == "__main__":
         assert module_path is not None, "Module path was not specified but eval_mode was set to True. Provide a path to a saved module."
 
     llm = args.checkpoint
+    desc_only_flag = False
     if llm != "num_only":
         regression_head_mode = args.mode
         if regression_head_mode not in ["best", "basic"]:
             raise ValueError("Regression head argument must be either best or basic.")
         if "desc_only" in llm:
             llm = "almanach/camembertav2-base" if "camemberta" in llm.lower() else "google-bert/bert-base-uncased"
-        
+            desc_only_flag = True
         llm_name = llm[llm.index("/") + 1:]
         #print(f"../models/{regression_head_mode}/fnv_with_{llm_name}")
         # Datasets:
@@ -177,12 +177,15 @@ if __name__ == "__main__":
     dataset_dict = proper_loading(path_to_datasets)
 
     path_to_study = "../hyperparameter_study/optuna_study.pkl"
-    module, optimizer, scheduler, batch_level_steps, n_batches = prepare_training(path_to_study, llm, mode=regression_head_mode)
+    module, optimizer, scheduler, batch_level_steps, n_batches = prepare_training(path_to_study, llm, 
+                                                                                  mode=regression_head_mode,
+                                                                                  desc_only=desc_only_flag)
     
     if eval_mode == 0:
         EPOCHS = 10
         # network.to(dtype=torch.float16)
         # torch.cuda.empty_cache()
+        llm_name = "desc_only_" + llm_name if desc_only_flag else llm_name 
         module, best_epoch = train_loop(module, 
                             EPOCHS, 
                             train_dataset=dataset_dict['Iterators']['train'], 
@@ -209,7 +212,7 @@ if __name__ == "__main__":
                                             dataset_dict['Iterators']['test'], 
                                             nn.SmoothL1Loss(reduction='mean'))
         
-        path_predictions = f"../predictions/{regression_head_mode}/eval_fnv_with_{llm_name}_{best_epoch}.pt"
+        path_predictions = f"../predictions/{regression_head_mode}/eval_fnv_with_{llm_name}_{best_epoch}.pth"
         torch.save({'yhat':predictions, 'ytrue':true_targets}, path_predictions)
     
     else:
